@@ -17,7 +17,7 @@ local options = {
     outputDirectory = "~/mpv-gifs", -- save to home directory by default
     flags = "lanczos", -- or "spline"
     customFilters = nil,
-    key = "y",
+    key = "g", -- Default key. It will be used as "g": start, "G": end, "Ctrl+g" create non-sub, "Ctrl+G": create sub.
 }
 
 mp.options.read_options(options, "gifgen")
