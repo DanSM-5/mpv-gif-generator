@@ -261,6 +261,18 @@ function set_gif_end()
     mp.osd_message("GIF End: " .. end_time)
 end
 
+-- Remnant: Allow similar behavior to mkdir -p in linux
+function split(inputstr, sep)
+    if sep == nil then
+        sep = "%s"
+    end
+    local t={}
+    for str in string.gmatch(inputstr, "([^"..sep.."]+)") do
+        table.insert(t, str)
+    end
+    return t
+end
+
 --- Check if a file or directory exists in this path
 function exists(file)
    local ok, err, code = os.rename(file, file)
@@ -280,12 +292,25 @@ function is_dir(path)
 end
 
 function ensure_out_dir(pathname)
-    if not is_dir(pathname) then
-        local final_path = IS_WINDOWS and win_dir_esc(pathname) or pathname
-        local cmd_mkdir = "mkdir " .. final_path
-        msg.info("Out dir not found, creating: " .. cmd_mkdir)
-        os.execute(cmd_mkdir)
+    if is_dir(pathname) then
+        return
     end
+
+    msg.info("Out dir not found, creating: " .. pathname)
+    if not IS_WINDOWS then
+        os.execute('mkdir -p ' .. pathname)
+    end
+
+    -- TODO: Experimental if MSYS/MINGW is available, use its mkdir
+    -- if os.execute("uname") then
+    --     -- uname is available, so we can try to use gnu "mkdir"
+
+    --     -- TODO: Add additional test to this
+    --     os.execute('bash -c "mkdir -p \'' .. pathname .. '\'"')
+    -- end
+
+    -- Windows mkdir should behave like "mkdir -p" if command extensions are enabled.
+    os.execute("mkdir " .. win_dir_esc(pathname))
 end
 
 function file_exists(name)
