@@ -81,6 +81,6 @@ flags="lanczos"
 # Pass arbitrary filter strings. It was used when debugging.
 # Not recommended to set unless you know what you are doing.
 # Will make 'width', 'height', 'fps', and 'flags' config useless.
-# You will replace the strign: "scale='trunc(ih*dar/2)*2:trunc(ih/2)*2',setsar=1/1,scale=%d:%d:flags=%s"
+# You will replace the string: "scale='trunc(ih*dar/2)*2:trunc(ih/2)*2',setsar=1/1,scale=%d:%d:flags=%s"
 customFilters=
 ```
