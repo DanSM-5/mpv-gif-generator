@@ -16,7 +16,7 @@ local options = {
     extension = "gif", -- file extension by default
     outputDirectory = "~/mpv-gifs", -- save to home directory by default
     flags = "lanczos", -- or "spline"
-    customFilters = nil,
+    customFilters = "",
     key = "g", -- Default key. It will be used as "g": start, "G": end, "Ctrl+g" create non-sub, "Ctrl+G": create sub.
 }
 
@@ -26,9 +26,7 @@ mp.options.read_options(options, "gifgen")
 local res, err = mp.command_native({"expand-path", options.outputDirectory})
 options.outputDirectory = res
 
-if options.customFilters ~= nil then
-    filters = options.customFilters
-else
+if options.customFilters == nil or options.customFilters == "" then
     -- Set this to the filters to pass into ffmpeg's -vf option.
     -- filters="fps=24,scale='trunc(ih*dar/2)*2:trunc(ih/2)*2',setsar=1/1,scale=320:-1:flags=lanczos"
     filters = options.fps < 0 and "" or string.format("fps=%d,", options.fps)
@@ -36,6 +34,8 @@ else
         "scale='trunc(ih*dar/2)*2:trunc(ih/2)*2',setsar=1/1,scale=%d:%d:flags=%s",
         options.width, options.height, options.flags
     )
+else
+    filters = options.customFilters
 end
 
 
