@@ -23,7 +23,7 @@ local options = {
 mp.options.read_options(options, "gifgen")
 
 -- expand given path (i.e. ~/, ~~/, …)
-res, err = mp.command_native({"expand-path", options.outputDirectory})
+local res, err = mp.command_native({"expand-path", options.outputDirectory})
 options.outputDirectory = res
 
 if options.customFilters ~= nil then
