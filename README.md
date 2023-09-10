@@ -45,6 +45,10 @@ The script has one key configurable which can be any key from A-Z in the keyboar
 
 **Note:** Rendering of gifs with subtitles is a bit limited as only non-bitmap ones are currently supported and the generation can take quite long when the file is in a network share or similar.
 
+### Segments download
+
+For videos played with `yt-dlp` it is required to download the segment of the video first which may take a bit of time. Be patient while the video downloads. You'll see a notification when gif processing starts.
+
 ## Output
 By default the output directory is `~/mpv-gifs`. This setting can be changed in the config with the key `outputDirectory`.
 The output file name is in the format `<VIDEO NAME>_000.gif`. Full path `~/mpv-gifs/<VIDEO NAME_000.gif>`.
