@@ -103,11 +103,9 @@ segment = segment_base .. ".%(ext)s"
 
 function make_gif_with_subtitles()
     if is_local_file() then
-        msg.info('LOCAL FILE')
         make_gif_internal(true, start_time, end_time, get_path())
     else
         download_video_segment(start_time, end_time)
-        msg.info('URL FILE')
     end
 end
 
