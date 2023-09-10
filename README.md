@@ -3,7 +3,7 @@
 Small script that uses ffmpeg in order to generate GIFs from a chosen part of the playing video.
 
 This script is an extension of the original and forks:
-- Original: https://github.com/the-honey/mpv-gif-generator
+- Original: https://gist.github.com/Ruin0x11/8fae0a9341b41015935f76f913b28d2a
 - Forked version from: https://github.com/tyalie/mpv-gif-generator
 - Windows support: https://github.com/the-honey/mpv-gif-generator
 
