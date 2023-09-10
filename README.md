@@ -19,7 +19,7 @@ What's different from the other versions?
 
 ## Installation
 
-Copy the lua script into 
+Copy the lua script into
 - `~/.config/mpv/scripts/` for linux (single user)
 - `/etc/mpv/scripts` for linux (all users)
 - `~/AppData/Roaming/mpv/scripts` for windows (single user)
@@ -34,7 +34,7 @@ starting mpv through the `*.desktop` entry (i.e. file explorer, …)
 
 ## Usage
 
-The script has one key configurable which can be any key from A-Z in the keyboard. The default key is "g" if not configured. The case is insensitive. See the table using the default "g". 
+The script has one key configurable which can be any key from A-Z in the keyboard. The default key is "g" if not configured. The case is insensitive. See the table using the default "g".
 
 | shortcut          | effect                    |
 | ----------------- | ------------------------- |
@@ -42,6 +42,8 @@ The script has one key configurable which can be any key from A-Z in the keyboar
 | <kbd>G</kbd>      | set gif end               |
 | <kbd>Ctrl+g</kbd> | render gif                |
 | <kbd>Ctrl+G</kbd> | render gif with subtitles |
+
+You can of course map any of the 4 keybinfings separately using `keyStartTime`, `keyEndTime`, `keyMakeGif` and `keyMakeGifSub`. Any keybinding not provided will default to the default key (g or any set as `key` in the config).
 
 **Note:** Rendering of gifs with subtitles is a bit limited as only non-bitmap ones are currently supported and the generation can take quite long when the file is in a network share or similar.
 
@@ -76,6 +78,18 @@ outputDirectory=~/mpv-gifs
 
 # Set keybinding. See more in the table above.
 key=g
+
+# Set start time key
+keyStartTime=""
+
+# Set end time key
+keyEndTime=""
+
+# Make gif keybinding
+keyMakeGif=""
+
+# Make gif keybinding with subtitles
+keyMakeGifSub=""
 
 # Command used for ffmpeg. Useful if ffmpeg is not in the path. It supports mpv expansions.
 ffmpegCmd=ffmpeg

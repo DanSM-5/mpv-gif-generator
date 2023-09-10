@@ -18,6 +18,10 @@ local options = {
     flags = "lanczos", -- or "spline"
     customFilters = "",
     key = "g", -- Default key. It will be used as "g": start, "G": end, "Ctrl+g" create non-sub, "Ctrl+G": create sub.
+    keyStartTime = "",
+    keyEndTime = "",
+    keyMakeGif = "",
+    keyMakeGifSub = "",
     ffmpegCmd = "ffmpeg",
     ytdlpCmd = "yt-dlp",
     debug = false, -- for debug
@@ -457,8 +461,12 @@ end
 
 local lower_key = string.lower(options.key)
 local upper_key = string.upper(options.key)
+local start_time_key = options.keyStartTime or lower_key
+local end_time_key = options.keyEndTime or upper_key
+local make_gif_key = options.keyMakeGif or string.format("Ctrl+%s", lower_key)
+local make_gif_sub_key = options.keyMakeGifSub or string.format("Ctrl+%s", upper_key)
 
-mp.add_key_binding(lower_key, "set_gif_start", set_gif_start)
-mp.add_key_binding(upper_key, "set_gif_end", set_gif_end)
-mp.add_key_binding(string.format("Ctrl+%s", lower_key), "make_gif", make_gif)
-mp.add_key_binding(string.format("Ctrl+%s", upper_key), "make_gif_with_subtitles", make_gif_with_subtitles)
+mp.add_key_binding(start_time_key, "set_gif_start", set_gif_start)
+mp.add_key_binding(end_time_key, "set_gif_end", set_gif_end)
+mp.add_key_binding(make_gif_key, "make_gif", make_gif)
+mp.add_key_binding(make_gif_sub_key, "make_gif_with_subtitles", make_gif_with_subtitles)
