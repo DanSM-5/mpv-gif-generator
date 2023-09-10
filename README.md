@@ -24,6 +24,9 @@ Copy the lua script into
 - `/etc/mpv/scripts` for linux (all users)
 - `~/AppData/Roaming/mpv/scripts` for windows (single user)
 
+Script supports cloning the repo into the scripts directory. On windows it may need to have
+symlinks enabled.
+
 ### Debugging
 
 If errors with ffmpeg occurs these are either logged to the terminal (when `terminal != no`) otherwise to `/tmp/mpv-gif-ffmpeg.<TIMESTAMP>.log`. The `terminal==no` case occurs for example when
