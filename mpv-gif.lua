@@ -18,8 +18,8 @@ local options = {
     flags = "lanczos", -- or "spline"
     customFilters = "",
     key = "g", -- Default key. It will be used as "g": start, "G": end, "Ctrl+g" create non-sub, "Ctrl+G": create sub.
-    ffmpeg_cmd = "ffmpeg",
-    ytdlp_cmd = "yt-dlp",
+    ffmpegCmd = "ffmpeg",
+    ytdlpCmd = "yt-dlp",
     debug = false, -- for debug
 }
 
@@ -73,10 +73,10 @@ end
 -- expand given path (i.e. ~/, ~~/, …)
 local res, err = mp.command_native({ "expand-path", options.outputDirectory })
 options.outputDirectory = ffmpeg_esc(res)
-res, err = mp.command_native({ "expand-path", options.ytdlp_cmd })
-options.ytdlp_cmd = ffmpeg_esc(res)
-res, err = mp.command_native({ "expand-path", options.ffmpeg_cmd })
-options.ffmpeg_cmd = ffmpeg_esc(res)
+res, err = mp.command_native({ "expand-path", options.ytdlpCmd })
+options.ytdlpCmd = ffmpeg_esc(res)
+res, err = mp.command_native({ "expand-path", options.ffmpegCmd })
+options.ffmpegCmd = ffmpeg_esc(res)
 
 start_time = -1
 end_time = -1
@@ -120,7 +120,7 @@ function download_video_segment(start_time_l, end_time_l)
     local url = mp.get_property("path", "")
 
     local args_ytdlp = {
-        options.ytdlp_cmd,
+        options.ytdlpCmd,
         "-v", -- For debug
         "--download-sections", "*" .. start_time_l .. "-" .. end_time_l, -- Specify download segment
         "--force-keyframes-at-cuts", -- Force cut at specify segment
@@ -308,7 +308,7 @@ function make_gif_internal(burn_subtitles, start_time_l, end_time_l, pathname)
     v_track = string.format("[0:v:%d] ", sel_video["id"] - 1)
     local filter_pal = v_track .. filters .. ",palettegen=stats_mode=diff"
     local args_palette = {
-        options.ffmpeg_cmd,
+        options.ffmpegCmd,
         "-v", "warning",
         "-ss", tostring(position), "-t", tostring(duration),
         "-i", pathname,
@@ -319,7 +319,7 @@ function make_gif_internal(burn_subtitles, start_time_l, end_time_l, pathname)
     local filter_gif = v_track .. filters .. subtitle_filter .. " [x]; "
     filter_gif = filter_gif .. "[x][1:v] paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle"
     local args_gif = {
-        options.ffmpeg_cmd,
+        options.ffmpegCmd,
         "-v", "warning",
         "-ss", tostring(position), "-t", tostring(duration),  -- define which part to use
         "-copyts",  -- otherwise ss can't be reused
