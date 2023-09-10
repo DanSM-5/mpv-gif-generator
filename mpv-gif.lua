@@ -52,6 +52,10 @@ end or function (...) end
 
 -- Debug only - Get printable strings for tables
 function dump(o)
+    if not options.debug then
+        return ""
+    end
+
     if type(o) == 'table' then
         local s = '{ '
         for k,v in pairs(o) do
