@@ -18,13 +18,12 @@ local options = {
     flags = "lanczos", -- or "spline"
     customFilters = "",
     key = "g", -- Default key. It will be used as "g": start, "G": end, "Ctrl+g" create non-sub, "Ctrl+G": create sub.
+    ffmpeg_cmd = "ffmpeg",
+    ytdlp_cmd = "yt-dlp",
+    debug = false, -- for debug
 }
 
 mp.options.read_options(options, "gifgen")
-
--- expand given path (i.e. ~/, ~~/, …)
-local res, err = mp.command_native({"expand-path", options.outputDirectory})
-options.outputDirectory = res
 
 if options.customFilters == nil or options.customFilters == "" then
     -- Set this to the filters to pass into ffmpeg's -vf option.
@@ -35,21 +34,128 @@ if options.customFilters == nil or options.customFilters == "" then
         options.width, options.height, options.flags
     )
 else
-    filters = options.customFilters
+    filters = string.format(
+        options.customFilters,
+        options.width, options.height, options.flags
+    )
 end
 
+log_verbose = options.debug and function (...)
+    msg.info(...)
+end or function (...) end
+
+function win_dir_esc(s)
+    -- To create a dir using mkdir in cmd path requires to use backslash
+    return string.gsub(s, [[/]], [[\]])
+end
+
+-- shell escape
+function esc(s)
+    -- Copied function. Probably not needed
+    return string.gsub(s, '"', '"\\""')
+end
+
+function ffmpeg_esc(s)
+    -- escape string to be used in ffmpeg arguments (i.e. filenames in filter)
+    -- s = string.gsub(s, "/", IS_WINDOWS and "\\" or "/" ) -- Windows seems to work fine with forward slash '/'
+    s = string.gsub(s, [[\]], [[/]])
+    s = string.gsub(s, '"', '"\\""')
+    -- s = string.gsub(s, ":", "\\:") -- Is this needed?
+    s = string.gsub(s, "'", "\\'")
+    return s
+end
+
+function clean_string(s)
+    -- Remove problematic chars from strings
+    return string.gsub(s, "[\\/|?*%[%]\"\'>< ]", [[_]])
+end
+
+-- expand given path (i.e. ~/, ~~/, …)
+local res, err = mp.command_native({ "expand-path", options.outputDirectory })
+options.outputDirectory = ffmpeg_esc(res)
+res, err = mp.command_native({ "expand-path", options.ytdlp_cmd })
+options.ytdlp_cmd = ffmpeg_esc(res)
+res, err = mp.command_native({ "expand-path", options.ffmpeg_cmd })
+options.ffmpeg_cmd = ffmpeg_esc(res)
 
 start_time = -1
 end_time = -1
-temp_location = IS_WINDOWS and os.getenv("TEMP") or "/tmp"
-palette = temp_location .. "/palette.png"
+temp_location = IS_WINDOWS and ffmpeg_esc(os.getenv("TEMP")) or "/tmp"
+palette = temp_location .. "/mpv-gif-gen_palette.png"
+segment_base = "mpv-gif-gen_segment"
+segment = segment_base .. ".%(ext)s"
 
 function make_gif_with_subtitles()
-    make_gif_internal(true)
+    if is_local_file() then
+        msg.info('LOCAL FILE')
+        make_gif_internal(true, start_time, end_time, get_path())
+    else
+        download_video_segment(start_time, end_time)
+        msg.info('URL FILE')
+    end
 end
 
 function make_gif()
-    make_gif_internal(false)
+    if is_local_file() then
+        make_gif_internal(false, start_time, end_time, get_path())
+    else
+        download_video_segment(start_time, end_time)
+    end
+end
+
+function is_local_file()
+    -- Pathname for urls will be the url itself
+    local pathname = mp.get_property("path", "")
+    return string.find(pathname, "^https?://") == nil
+end
+
+function download_video_segment(start_time_l, end_time_l)
+    if start_time_l == -1 or end_time_l == -1 or start_time_l >= end_time_l then
+        mp.osd_message("Invalid start/end time.")
+        return
+    end
+
+    mp.osd_message('Start video segment download')
+
+    local url = mp.get_property("path", "")
+
+    local args_ytdlp = {
+        options.ytdlp_cmd,
+        "-v", -- For debug
+        "--download-sections", "*" .. start_time_l .. "-" .. end_time_l, -- Specify download segment
+        "--force-keyframes-at-cuts", -- Force cut at specify segment
+        "-S", "proto:https", -- Avoid hls m3u8 for ffmpeg bug (https://github.com/yt-dlp/yt-dlp/issues/7824)
+        "--path", temp_location, -- Path to download video
+        "--output", segment, -- Name of the out file
+        "--force-overwrites", -- Always overwrite previous file with same name in tmp dir
+        "-f", "mp4",
+        -- "--remux-video", "mp4", -- Force always getting a mp4
+        url,
+    }
+
+    log_verbose("[ARGS] yt-dlp:", dump(args_ytdlp))
+
+    local ytdlp_cmd = {
+        name = "subprocess",
+        args = args_ytdlp,
+        capture_stdout = true,
+        capture_stderr = true
+    }
+
+
+    -- Download video segment
+    mp.command_native_async(ytdlp_cmd, function(res, val, err)
+        if log_command_result("yt-dlp", res, val, err) ~= 0 then
+            return
+        end
+
+        local segment_file = temp_location .. "/" .. segment_base .. ".mp4"
+        local message = "Video segment downloaded: " .. segment_file
+        msg.info(message)
+        mp.osd_message(message)
+        make_gif_internal(false, 0, end_time_l - start_time_l, segment_file)
+        -- msg.info(dump(res))
+    end)
 end
 
 function get_path()
@@ -58,7 +164,7 @@ function get_path()
     pathname = ffmpeg_esc(pathname)
 
     if IS_WINDOWS then
-        is_absolute = string.find(pathname, "^[a-zA-Z]:/") ~= nil
+        is_absolute = string.find(pathname, "^[a-zA-Z]:[/\\]") ~= nil
     else
         is_absolute = string.find(pathname, "^/") ~= nil
     end
@@ -73,12 +179,12 @@ end
 
 function get_gifname()
     -- then, make the gif
-    local filename = mp.get_property("filename/no-ext")
-    local file_path = options.outputDirectory .. "/" .. filename
+    local filename = is_local_file() and mp.get_property("filename/no-ext") or mp.get_property("media-title", mp.get_property("filename/no-ext"))
+    local file_path = options.outputDirectory .. "/" .. clean_string(filename)
 
     -- increment filename
     for i = 0,999 do
-        local fn = string.format('%s_%03d.%s',file_path,i, options.extension)
+        local fn = string.format('%s_%03d.%s', file_path, i, options.extension)
         if not file_exists(fn) then
             gifname = fn
             break
@@ -94,11 +200,21 @@ function get_gifname()
     return gifname
 end
 
-function log_command_result(res, val, err)
+function log_command_result(command, res, val, err)
+    log_verbose("[RES] " .. command .. " :", res)
+
+    if val ~= nil then
+        log_verbose("[VAL]:", dump(val))
+    end
+
+    if err ~= nil then
+        log_verbose("[ERR]:", dump(err))
+    end
+
     if not (res and (val == nil or val["status"] == 0)) then
         if val ~= nil and val["stderr"] then
             if mp.get_property("options/terminal") == "no" then
-                file = io.open(string.format(ffmpeg_esc(temp_location) .. "/mpv-gif-ffmpeg.%s.log", os.time()), "w")
+                file = io.open(string.format(temp_location .. "/mpv-gif-ffmpeg.%s.log", os.time()), "w")
                 file:write(string.format("ffmpeg error %d:\n%s", val["status"], val["stderr"]))
                 file:close()
             else
@@ -106,7 +222,7 @@ function log_command_result(res, val, err)
             end
         else
             if mp.get_property("options/terminal") == "no" then
-                file = io.open(string.format(ffmpeg_esc(temp_location) .. "/mpv-gif-ffmpeg.%s.log", os.time()), "w")
+                file = io.open(string.format(temp_location .. "/mpv-gif-ffmpeg.%s.log", os.time()), "w")
                 file:write(string.format("ffmpeg error:\n%s", err))
                 file:close()
             else
@@ -150,9 +266,7 @@ function get_tracks()
     return video, sub, has_sub
 end
 
-function make_gif_internal(burn_subtitles)
-    local start_time_l = start_time
-    local end_time_l = end_time
+function make_gif_internal(burn_subtitles, start_time_l, end_time_l, pathname)
     if start_time_l == -1 or end_time_l == -1 or start_time_l >= end_time_l then
         mp.osd_message("Invalid start/end time.")
         return
@@ -169,8 +283,6 @@ function make_gif_internal(burn_subtitles)
     msg.info("Creating GIF" .. (burn_subtitles and " (with subtitles)" or ""))
     mp.osd_message("Creating GIF" .. (burn_subtitles and " (with subtitles)" or ""))
 
-    local pathname = get_path()
-
     subtitle_filter = ""
     -- add subtitles only for final rendering as it slows down significantly
     if burn_subtitles and has_sub then
@@ -181,7 +293,6 @@ function make_gif_internal(burn_subtitles)
         msg.info("There are no subtitle tracks")
         mp.osd_message("GIF: ignoring subtitle request")
     end
-
 
     local position = start_time_l
     local duration = end_time_l - start_time_l
@@ -197,24 +308,26 @@ function make_gif_internal(burn_subtitles)
     v_track = string.format("[0:v:%d] ", sel_video["id"] - 1)
     local filter_pal = v_track .. filters .. ",palettegen=stats_mode=diff"
     local args_palette = {
-        "ffmpeg", "-v", "warning",
+        options.ffmpeg_cmd,
+        "-v", "warning",
         "-ss", tostring(position), "-t", tostring(duration),
         "-i", pathname,
         "-vf", filter_pal,
-        "-y", ffmpeg_esc(palette)
+        "-y", palette
     }
 
     local filter_gif = v_track .. filters .. subtitle_filter .. " [x]; "
     filter_gif = filter_gif .. "[x][1:v] paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle"
     local args_gif = {
-        "ffmpeg", "-v", "warning",
+        options.ffmpeg_cmd,
+        "-v", "warning",
         "-ss", tostring(position), "-t", tostring(duration),  -- define which part to use
         "-copyts",  -- otherwise ss can't be reused
-        "-i", pathname, "-i", ffmpeg_esc(palette),  -- open files
+        "-i", pathname, "-i", palette,  -- open files
         "-an",  -- remove audio
         "-ss", tostring(position),  -- required for burning subtitles
         "-lavfi", filter_gif,
-        "-y", ffmpeg_esc(gifname)  -- output
+        "-y", gifname  -- output
     }
 
     local palette_cmd = {
@@ -231,24 +344,27 @@ function make_gif_internal(burn_subtitles)
         capture_stderr = true
     }
 
+    log_verbose("[ARGS] ffmpeg palette:", dump(args_palette))
+    log_verbose("[ARGS] ffmpeg gif:", dump(args_gif))
+
     -- first, create the palette
     mp.command_native_async(palette_cmd, function(res, val, err)
-            if log_command_result(res, val, err) ~= 0 then
+        if log_command_result("ffmpeg palette", res, val, err) ~= 0 then
+            return
+        end
+
+        msg.info("Generated palette: " .. palette)
+
+        -- then, make the gif
+        mp.command_native_async(gif_cmd, function(res, val, err)
+            if log_command_result("ffmpeg gif", res, val, err) ~= 0 then
                 return
             end
 
-            msg.info("Generated palette: " .. palette)
-
-            -- then, make the gif
-            mp.command_native_async(gif_cmd, function(res, val, err)
-                if log_command_result(res, val, err) ~= 0 then
-                    return
-                end
-
-                msg.info(string.format("GIF created - %s", gifname))
-                mp.osd_message(string.format("GIF created - %s", gifname), 2)
-            end)
+            msg.info(string.format("GIF created - %s", gifname))
+            mp.osd_message(string.format("GIF created - %s", gifname), 2)
         end)
+    end)
 end
 
 function set_gif_start()
@@ -314,34 +430,15 @@ function ensure_out_dir(pathname)
 end
 
 function file_exists(name)
+    -- io.open supports both '/' and '\' path separators
     local f = io.open(name, "r")
     if f ~= nil then io.close(f) return true else return false end
 end
 
+-- TODO: Check for removal
 function get_containing_path(str, sep)
     sep = sep or package.config:sub(1,1)
     return str:match("(.*"..sep..")")
-end
-
-function win_dir_esc(s)
-    -- To create a dir using mkdir path requires to use backslash
-    return string.gsub(s, [[/]], [[\]])
-end
-
--- shell escape
-function esc(s)
-    -- Copied function. Probably not needed
-    return string.gsub(s, '"', '"\\""')
-end
-
-function ffmpeg_esc(s)
-    -- escape string to be used in ffmpeg arguments (i.e. filenames in filter)
-    -- s = string.gsub(s, "/", IS_WINDOWS and "\\" or "/" ) -- Windows seems to work fine with forward slash '/'
-    s = string.gsub(s, [[\]], [[/]])
-    s = string.gsub(s, '"', '"\\""')
-    -- s = string.gsub(s, ":", "\\:") -- Is this needed?
-    s = string.gsub(s, "'", "\\'")
-    return s
 end
 
 -- Debug only - Get printable strings for tables
