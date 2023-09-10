@@ -44,6 +44,20 @@ log_verbose = options.debug and function (...)
     msg.info(...)
 end or function (...) end
 
+-- Debug only - Get printable strings for tables
+function dump(o)
+   if type(o) == 'table' then
+      local s = '{ '
+      for k,v in pairs(o) do
+         if type(k) ~= 'number' then k = '"'..k..'"' end
+         s = s .. '['..k..'] = ' .. dump(v) .. ','
+      end
+      return s .. '} '
+   else
+      return tostring(o)
+   end
+end
+
 function win_dir_esc(s)
     -- To create a dir using mkdir in cmd path requires to use backslash
     return string.gsub(s, [[/]], [[\]])
@@ -77,6 +91,8 @@ res, err = mp.command_native({ "expand-path", options.ytdlpCmd })
 options.ytdlpCmd = ffmpeg_esc(res)
 res, err = mp.command_native({ "expand-path", options.ffmpegCmd })
 options.ffmpegCmd = ffmpeg_esc(res)
+
+log_verbose("[OPTIONS]:", utils.to_string(options))
 
 start_time = -1
 end_time = -1
@@ -439,20 +455,6 @@ end
 function get_containing_path(str, sep)
     sep = sep or package.config:sub(1,1)
     return str:match("(.*"..sep..")")
-end
-
--- Debug only - Get printable strings for tables
-function dump(o)
-   if type(o) == 'table' then
-      local s = '{ '
-      for k,v in pairs(o) do
-         if type(k) ~= 'number' then k = '"'..k..'"' end
-         s = s .. '['..k..'] = ' .. dump(v) .. ','
-      end
-      return s .. '} '
-   else
-      return tostring(o)
-   end
 end
 
 local lower_key = string.lower(options.key)
