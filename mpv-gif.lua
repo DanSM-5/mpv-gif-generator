@@ -510,10 +510,19 @@ end
 
 local lower_key = string.lower(options.key)
 local upper_key = string.upper(options.key)
-local start_time_key = options.keyStartTime or lower_key
-local end_time_key = options.keyEndTime or upper_key
-local make_gif_key = options.keyMakeGif or string.format("Ctrl+%s", lower_key)
-local make_gif_sub_key = options.keyMakeGifSub or string.format("Ctrl+%s", upper_key)
+local start_time_key = options.keyStartTime ~= "" and options.keyStartTime or lower_key
+local end_time_key = options.keyEndTime ~= "" and options.keyEndTime or upper_key
+local make_gif_key = options.keyMakeGif ~= "" and options.keyMakeGif or string.format("Ctrl+%s", lower_key)
+local make_gif_sub_key = options.keyMakeGifSub ~= "" and options.keyMakeGifSub or string.format("Ctrl+%s", upper_key)
+
+log_verbose("Keybindings:", dump({
+    lower_key,
+    upper_key,
+    start_time_key,
+    end_time_key,
+    make_gif_key,
+    make_gif_sub_key,
+}))
 
 mp.add_key_binding(start_time_key, "set_gif_start", set_gif_start)
 mp.add_key_binding(end_time_key, "set_gif_end", set_gif_end)
