@@ -10,14 +10,12 @@ This script is an extension of the original and forks:
 What's different from the other versions?
 - It is cross platform (it should work in windows and linux at least).
 - Keybinding is configurable. Default is "g" but you can change it to any A-Z key.
-
-## Caveats
-The gif generation only works for files that are accessible in your computer. This means that
-videos like the ones played with yt-dlp won't work.
+- Supports local videos as well as all videos supported by `yt-dlp`.
 
 ## Dependencies
 - ffmpeg
 - mpv
+- yt-dlp (optional)
 
 ## Installation
 
@@ -66,11 +64,20 @@ height=-1
 # File extension (e.g. mp4 for telegram gifs).
 extension=gif
 
-# gif output directory. Should support mpv expansions: https://mpv.io/manual/master/#paths
+# Gif output directory. Should support mpv expansions: https://mpv.io/manual/master/#paths
 outputDirectory=~/mpv-gifs
 
 # Set keybinding. See more in the table above.
 key=g
+
+# Command used for ffmpeg. Useful if ffmpeg is not in the path. It supports mpv expansions.
+ffmpegCmd=ffmpeg
+
+# Command used for yt-dlp. Useful if yt-dlp is not in the path. It supports mpv expansions.
+ytdlpCmd=yt-dlp
+
+# Add additional logs for debbuging
+debug=false
 
 # Either "spline" or "lanczos".
 # These are different filters for downscaling.
@@ -80,7 +87,7 @@ flags="lanczos"
 
 # Pass arbitrary filter strings. It was used when debugging.
 # Not recommended to set unless you know what you are doing.
-# Will make 'width', 'height', 'fps', and 'flags' config useless.
+# You can set templates for the formatting of width (%d), height (%d) and flags (%s) in that order.
 # You will replace the string: "scale='trunc(ih*dar/2)*2:trunc(ih/2)*2',setsar=1/1,scale=%d:%d:flags=%s"
 customFilters=
 ```
