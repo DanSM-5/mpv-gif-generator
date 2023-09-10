@@ -142,7 +142,7 @@ function download_video_segment(start_time_l, end_time_l)
         "--path", temp_location, -- Path to download video
         "--output", segment, -- Name of the out file
         "--force-overwrites", -- Always overwrite previous file with same name in tmp dir
-        "-f", "mp4",
+        "-f", "mp4", -- Select video format. Setting mp4 to get a mp4 container
         -- "--remux-video", "mp4", -- Force always getting a mp4
         url,
     }
@@ -158,7 +158,7 @@ function download_video_segment(start_time_l, end_time_l)
 
     -- Download video segment
     mp.command_native_async(ytdlp_cmd, function(res, val, err)
-        if log_command_result("yt-dlp", res, val, err) ~= 0 then
+        if log_command_result(res, val, err, "yt-dlp") ~= 0 then
             return
         end
 
@@ -213,7 +213,8 @@ function get_gifname()
     return gifname
 end
 
-function log_command_result(command, res, val, err)
+function log_command_result(res, val, err, command)
+    command = command or "command"
     log_verbose("[RES] " .. command .. " :", res)
 
     if val ~= nil then
@@ -362,7 +363,7 @@ function make_gif_internal(burn_subtitles, start_time_l, end_time_l, pathname)
 
     -- first, create the palette
     mp.command_native_async(palette_cmd, function(res, val, err)
-        if log_command_result("ffmpeg palette", res, val, err) ~= 0 then
+        if log_command_result(res, val, err, "ffmpeg->palette") ~= 0 then
             return
         end
 
@@ -370,7 +371,7 @@ function make_gif_internal(burn_subtitles, start_time_l, end_time_l, pathname)
 
         -- then, make the gif
         mp.command_native_async(gif_cmd, function(res, val, err)
-            if log_command_result("ffmpeg gif", res, val, err) ~= 0 then
+            if log_command_result(res, val, err, "ffmpeg->gif") ~= 0 then
                 return
             end
 
