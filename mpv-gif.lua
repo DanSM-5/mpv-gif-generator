@@ -156,7 +156,6 @@ function download_video_segment(start_time_l, end_time_l)
         capture_stderr = true
     }
 
-
     -- Download video segment
     mp.command_native_async(ytdlp_cmd, function(res, val, err)
         if log_command_result("yt-dlp", res, val, err) ~= 0 then
