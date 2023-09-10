@@ -9,13 +9,16 @@ This script is an extension of the original and forks:
 
 What's different from the other versions?
 - It is cross platform (it should work in windows and linux at least).
-- Keybinding is configurable. Default is "g" but you can change it to any A-Z key.
+- Keybinding is configurable. Default is "g" but you can change it to any A-Z key or set all keybinfings
+  manually.
 - Supports local videos as well as all videos supported by `yt-dlp`.
+- Highly configurable. No that you need to change much from the defaults but you can.
 
 ## Dependencies
 - ffmpeg
 - mpv
 - yt-dlp (optional)
+- ffprob (optional, should come along ffmpeg)
 
 ## Installation
 
@@ -94,8 +97,15 @@ keyMakeGifSub=""
 # Command used for ffmpeg. Useful if ffmpeg is not in the path. It supports mpv expansions.
 ffmpegCmd=ffmpeg
 
+# Command used for ffprog. Useful if ffmpeg is not in the path. It supports mpv expansions.
+ffprogCmd=ffprog
+
 # Command used for yt-dlp. Useful if yt-dlp is not in the path. It supports mpv expansions.
 ytdlpCmd=yt-dlp
+
+# If adding subtitles and video is played by yt-dlp, this will be passed to yt-dlp to filter
+# the language of the subtitles. Default to english only subtitles.
+ytdlpSubLang="en.*"
 
 # Add additional logs for debbuging
 debug=false

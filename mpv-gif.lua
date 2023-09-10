@@ -23,7 +23,9 @@ local options = {
     keyMakeGif = "",
     keyMakeGifSub = "",
     ffmpegCmd = "ffmpeg",
+    ffprogCmd = "ffprog",
     ytdlpCmd = "yt-dlp",
+    ytdlpSubLang = "en.*",
     debug = false, -- for debug
 }
 
@@ -73,12 +75,15 @@ function esc(s)
     return string.gsub(s, '"', '"\\""')
 end
 
+function escape_colon(s)
+    return string.gsub(s, ":", "\\:")
+end
+
 function ffmpeg_esc(s)
     -- escape string to be used in ffmpeg arguments (i.e. filenames in filter)
     -- s = string.gsub(s, "/", IS_WINDOWS and "\\" or "/" ) -- Windows seems to work fine with forward slash '/'
     s = string.gsub(s, [[\]], [[/]])
     s = string.gsub(s, '"', '"\\""')
-    -- s = string.gsub(s, ":", "\\:") -- Is this needed?
     s = string.gsub(s, "'", "\\'")
     return s
 end
@@ -88,13 +93,41 @@ function clean_string(s)
     return string.gsub(s, "[\\/|?*%[%]\"\'>< ]", [[_]])
 end
 
--- expand given path (i.e. ~/, ~~/, …)
-local res, err = mp.command_native({ "expand-path", options.outputDirectory })
-options.outputDirectory = ffmpeg_esc(res)
-res, err = mp.command_native({ "expand-path", options.ytdlpCmd })
-options.ytdlpCmd = ffmpeg_esc(res)
-res, err = mp.command_native({ "expand-path", options.ffmpegCmd })
-options.ffmpegCmd = ffmpeg_esc(res)
+function has_subtitles(filepath)
+    -- Command will return "subtitle" if subtitles are available (https://superuser.com/questions/1206714/ffmpeg-errors-out-when-no-subtitle-exists)
+    local args_ffprobe = {
+        "ffprobe", "-loglevel", "error",
+        "-select_streams", "s:0",
+        "-show_entries", "stream=codec_type",
+        "-of", "csv=p=0",
+        filepath,
+    }
+
+    log_verbose("[ARGS] ffprobe subtitle:", dump(args_ffprobe))
+
+    local ffprobe_res, ffprobe_err = mp.command_native({
+        name = "subprocess",
+        args = args_ffprobe,
+        capture_stdout = true,
+        capture_stderr = true
+    })
+
+    log_verbose("Command ffprog complete. Res:", dump(ffprobe_res))
+    log_verbose("Command ffprog err:", dump(ffprobe_err))
+
+    return ffprobe_res ~= nil and ffprobe_res["stdout"] ~= nil and string.find(ffprobe_res["stdout"], "subtitle") ~= nil
+end
+
+function expand_string(s)
+    -- expand given path (i.e. ~/, ~~/, …)
+    local expand_res, expand_err = mp.command_native({ "expand-path", s })
+    return ffmpeg_esc(expand_res)
+end
+
+options.outputDirectory = expand_string(options.outputDirectory)
+options.ytdlpCmd = expand_string(options.ytdlpCmd)
+options.ffmpegCmd = expand_string(options.ffmpegCmd)
+options.ffprogCmd = expand_string(options.ffprogCmd)
 
 log_verbose("[OPTIONS]:", utils.to_string(options))
 
@@ -109,7 +142,7 @@ function make_gif_with_subtitles()
     if is_local_file() then
         make_gif_internal(true, start_time, end_time, get_path())
     else
-        download_video_segment(start_time, end_time)
+        download_video_segment(start_time, end_time, true)
     end
 end
 
@@ -117,7 +150,7 @@ function make_gif()
     if is_local_file() then
         make_gif_internal(false, start_time, end_time, get_path())
     else
-        download_video_segment(start_time, end_time)
+        download_video_segment(start_time, end_time, false)
     end
 end
 
@@ -127,13 +160,14 @@ function is_local_file()
     return string.find(pathname, "^https?://") == nil
 end
 
-function download_video_segment(start_time_l, end_time_l)
+function download_video_segment(start_time_l, end_time_l, burn_subtitles)
     if start_time_l == -1 or end_time_l == -1 or start_time_l >= end_time_l then
         mp.osd_message("Invalid start/end time.")
         return
     end
 
-    mp.osd_message('Start video segment download')
+    msg.info("Start video segment download" .. (burn_subtitles and " (with subtitles)" or ""))
+    mp.osd_message("Start video segment download" .. (burn_subtitles and " (with subtitles)" or ""))
 
     local url = mp.get_property("path", "")
 
@@ -150,6 +184,20 @@ function download_video_segment(start_time_l, end_time_l)
         -- "--remux-video", "mp4", -- Force always getting a mp4
         url,
     }
+
+    -- Pass flags to embed subtitles. Subtitles support depend on video.
+    if burn_subtitles then
+        -- Embed Subtitles
+        -- https://www.reddit.com/r/youtubedl/comments/wrjaa6/burn_subtitle_while_downloading_video
+        table.insert(args_ytdlp, "--embed-subs")
+        table.insert(args_ytdlp, "--sub-langs")
+        table.insert(args_ytdlp, options.ytdlpSubLang)
+        -- TODO: Study if these options can be used
+        -- table.insert(args_ytdlp, "--postprocessor-args")
+        -- table.insert(args_ytdlp, "EmbedSubtitle:-disposition:s:0 forced")
+        -- table.insert(args_ytdlp, "--merge-output-format")
+        -- table.insert(args_ytdlp, "mp4")
+    end
 
     log_verbose("[ARGS] yt-dlp:", dump(args_ytdlp))
 
@@ -170,8 +218,7 @@ function download_video_segment(start_time_l, end_time_l)
         local message = "Video segment downloaded: " .. segment_file
         msg.info(message)
         mp.osd_message(message)
-        make_gif_internal(false, 0, end_time_l - start_time_l, segment_file)
-        -- msg.info(dump(res))
+        make_gif_internal(burn_subtitles, 0, end_time_l - start_time_l, segment_file)
     end)
 end
 
@@ -303,10 +350,12 @@ function make_gif_internal(burn_subtitles, start_time_l, end_time_l, pathname)
 
     subtitle_filter = ""
     -- add subtitles only for final rendering as it slows down significantly
-    if burn_subtitles and has_sub then
+    if burn_subtitles and has_sub and is_local_file() then
         -- TODO: implement usage of different subtitle formats (i.e. bitmap ones, …)
         sid = (sel_sub == nil and 0 or sel_sub["id"] - 1)  -- mpv starts counting subtitles with one
-        subtitle_filter = string.format(",subtitles='%s':si=%d", pathname, sid)
+        subtitle_filter = string.format(",subtitles='%s':si=%d", escape_colon(pathname), sid)
+    elseif burn_subtitles and not is_local_file() and has_subtitles(pathname) then
+        subtitle_filter = string.format(",subtitles='%s':si=0", escape_colon(pathname))
     elseif burn_subtitles then
         msg.info("There are no subtitle tracks")
         mp.osd_message("GIF: ignoring subtitle request")
