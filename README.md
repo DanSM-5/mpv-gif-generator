@@ -20,6 +20,9 @@ What's different from the other versions?
 - yt-dlp (optional)
 - ffprob (optional, should come along ffmpeg)
 
+## Demo
+![rice](img/🍚.gif)
+
 ## Installation
 
 Copy the lua script into
@@ -76,7 +79,7 @@ height=-1
 # File extension (e.g. mp4 for telegram gifs).
 extension=gif
 
-# Gif output directory. Should support mpv expansions: https://mpv.io/manual/master/#paths
+# Gif output directory. It supports mpv expansions: https://mpv.io/manual/master/#paths
 outputDirectory=~/mpv-gifs
 
 # Set keybinding. See more in the table above.
