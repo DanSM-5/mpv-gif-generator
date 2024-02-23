@@ -1,1 +1,1 @@
-mpv-gif.lua
+require 'mpv-gif'
