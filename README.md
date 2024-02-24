@@ -57,9 +57,20 @@ You can of course map any of the 4 keybinfings separately using `keyStartTime`, 
 
 For videos played with `yt-dlp` it is required to download the segment of the video first which may take a bit of time. Be patient while the video downloads. You'll see a notification when gif processing starts.
 
+### Changing mode
+There are three modes available for configuring the behavior of the extension.
+
+| mode              | behavior                         |
+| ----------------- | ---------------------------------|
+| <kbd>gif</kbd>    | Create a gif (default)           |
+| <kbd>video</kbd>  | Cut and save the resulting video |
+| <kbd>all</kbd>    | Do both operatios                |
+
+For any non-valid mode the behavior will be to default to `gif`.
+
 ## Output
 By default the output directory is `~/mpv-gifs`. This setting can be changed in the config with the key `outputDirectory`.
-The output file name is in the format `<VIDEO NAME>_000.gif`. Full path `~/mpv-gifs/<VIDEO NAME_000.gif>`.
+The output file name is in the format `<VIDEO NAME>_000<MODE INITIAL>.<EXT>`. Full path `~/mpv-gifs/<VIDEO NAME>_000<MODE INITIAL>.<EXT>`.
 
 ## Configurations
 The script can be configured either by having a `script-opts/gifgen.conf` or using e.g. `--script-opts=gifgen-width=-1`. An example configuration file could be:
@@ -81,6 +92,9 @@ extension=gif
 
 # Gif output directory. It supports mpv expansions: https://mpv.io/manual/master/#paths
 outputDirectory=~/mpv-gifs
+
+# Set mode use to work with. Available 'gif', 'video' and 'all'.
+mode=gif
 
 # Set keybinding. See more in the table above.
 key=g
