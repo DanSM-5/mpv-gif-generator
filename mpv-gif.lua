@@ -2,10 +2,15 @@
 -- Requires ffmpeg.
 -- Adapted from http://blog.pkh.me/p/21-high-quality-gif-with-ffmpeg.html
 -- Usage: "g" to set start frame, "G" to set end frame, "Ctrl+g" to create.
+local mp = require 'mp'
 local msg = require 'mp.msg'
 local utils = require 'mp.utils'
 mp.options = require 'mp.options'
 local IS_WINDOWS = package.config:sub(1, 1) ~= "/"
+
+-- Global start and end time
+start_time = -1
+end_time = -1
 
 -- options
 -- require 'mp.options'
@@ -30,12 +35,17 @@ local default_options = {
     mode = "gif"
 }
 
+-- Read options on startup. Later executions will read the options again
+-- so things like the commands and paths can be changed on the fly
+-- while other things like keybindings will require you to relaunch
+mp.options.read_options(default_options, "gifgen")
+
 local log_verbose = default_options.debug and function (...)
     msg.info(...)
 end or function (...) end
 
 -- Debug only - Get printable strings for tables
-function dump(o)
+local function dump(o)
     if not default_options.debug then
         return ""
     end
@@ -52,28 +62,32 @@ function dump(o)
     end
 end
 
-function is_local_file()
+local function is_local_file()
     -- Pathname for urls will be the url itself
     local pathname = mp.get_property("path", "")
     return string.find(pathname, "^https?://") == nil
 end
 
-function win_dir_esc(s)
+local function win_dir_esc(s)
     -- To create a dir using mkdir in cmd path requires to use backslash
     return string.gsub(s, [[/]], [[\]])
 end
 
--- shell escape
-function esc(s)
-    -- Copied function. Probably not needed
-    return string.gsub(s, '"', '"\\""')
-end
+-- local function win_dir_esc_str(s)
+--     return string.gsub(s, [[/]], [[\\]])
+-- end
 
-function escape_colon(s)
+-- shell escape
+-- local function esc(s)
+--     -- Copied function. Probably not needed
+--     return string.gsub(s, '"', '"\\""')
+-- end
+
+local function escape_colon(s)
     return string.gsub(s, ":", "\\:")
 end
 
-function ffmpeg_esc(s)
+local function ffmpeg_esc(s)
     -- escape string to be used in ffmpeg arguments (i.e. filenames in filter)
     -- s = string.gsub(s, "/", IS_WINDOWS and "\\" or "/" ) -- Windows seems to work fine with forward slash '/'
     s = string.gsub(s, [[\]], [[/]])
@@ -82,12 +96,12 @@ function ffmpeg_esc(s)
     return s
 end
 
-function clean_string(s)
+local function clean_string(s)
     -- Remove problematic chars from strings
     return string.gsub(s, "[\\/|?*%[%]\"\'>< ]", [[_]])
 end
 
-function has_subtitles(filepath)
+local function has_subtitles(filepath)
     -- Command will return "subtitle" if subtitles are available (https://superuser.com/questions/1206714/ffmpeg-errors-out-when-no-subtitle-exists)
     local args_ffprobe = {
         "ffprobe", "-loglevel", "error",
@@ -97,7 +111,7 @@ function has_subtitles(filepath)
         filepath,
     }
 
-    log_verbose("[ARGS] ffprobe subtitle:", dump(args_ffprobe))
+    log_verbose("[GIF][ARGS] ffprobe subtitle:", dump(args_ffprobe))
 
     local ffprobe_res, ffprobe_err = mp.command_native({
         name = "subprocess",
@@ -106,20 +120,20 @@ function has_subtitles(filepath)
         capture_stderr = true
     })
 
-    log_verbose("Command ffprog complete. Res:", dump(ffprobe_res))
-    log_verbose("Command ffprog err:", dump(ffprobe_err))
+    log_verbose("[GIF] Command ffprog complete. Res:", dump(ffprobe_res))
+    log_verbose("[GIF] Command ffprog err:", dump(ffprobe_err))
 
     return ffprobe_res ~= nil and ffprobe_res["stdout"] ~= nil and string.find(ffprobe_res["stdout"], "subtitle") ~= nil
 end
 
-function expand_string(s)
+local function expand_string(s)
     -- expand given path (i.e. ~/, ~~/, …)
     local expand_res, expand_err = mp.command_native({ "expand-path", s })
     return ffmpeg_esc(expand_res)
 end
 
 --- Check if a file or directory exists in this path
-function exists(file)
+local function exists(file)
    local ok, err, code = os.rename(file, file)
    if not ok then
       if code == 13 then
@@ -131,12 +145,12 @@ function exists(file)
 end
 
 --- Check if a directory exists in this path
-function is_dir(path)
+local function is_dir(path)
    -- "/" works on both Unix and Windows
    return exists(path .. "/")
 end
 
-function ensure_out_dir(pathname)
+local function ensure_out_dir(pathname)
     if is_dir(pathname) then
         return
     end
@@ -158,17 +172,17 @@ function ensure_out_dir(pathname)
     os.execute("mkdir " .. win_dir_esc(pathname))
 end
 
-function file_exists(name)
+local function file_exists(name)
     -- io.open supports both '/' and '\' path separators
     local f = io.open(name, "r")
     if f ~= nil then io.close(f) return true else return false end
 end
 
 -- TODO: Check for removal
-function get_containing_path(str, sep)
-    sep = sep or package.config:sub(1,1)
-    return str:match("(.*"..sep..")")
-end
+-- local function get_containing_path(str, sep)
+--     sep = sep or package.config:sub(1,1)
+--     return str:match("(.*"..sep..")")
+-- end
 
 math.randomseed(os.time(), tonumber(tostring(os.time()):reverse():sub(1, 9)))
 local random = math.random
@@ -182,7 +196,7 @@ local function uuid()
     return id
 end
 
-function get_path()
+local function get_path()
     local is_absolute = nil
     local pathname = mp.get_property("path", "")
     pathname = ffmpeg_esc(pathname)
@@ -201,6 +215,18 @@ function get_path()
     return ffmpeg_esc(pathname)
 end
 
+-- Remnant: Allow similar behavior to mkdir -p in linux
+-- local function split(inputstr, sep)
+--     if sep == nil then
+--         sep = "%s"
+--     end
+--     local t={}
+--     for str in string.gmatch(inputstr, "([^"..sep.."]+)") do
+--         table.insert(t, str)
+--     end
+--     return t
+-- end
+
 -- function get_file_name(name)
 --   return name:match("^.+/(.+)$")
 -- end
@@ -209,7 +235,7 @@ local function get_file_extension(name)
   return name:match("^.+(%..+)$")
 end
 
-function get_file_names(options)
+local function get_file_names(options)
     local is_local = is_local_file()
     local filename = is_local and mp.get_property("filename/no-ext") or mp.get_property("media-title", mp.get_property("filename/no-ext"))
     local videoext = is_local and get_file_extension(mp.get_property("filename")) or 'mp4'
@@ -245,12 +271,173 @@ local function shallow_copy(t)
   return table
 end
 
+local function log_command_result(res, val, err, command, tmp)
+    command = command or "command"
+    log_verbose("[GIF][RES] " .. command .. " :", res)
+
+    if val ~= nil then
+        log_verbose("[GIF][VAL]:", dump(val))
+    end
+
+    if err ~= nil then
+        log_verbose("[GIF][ERR]:", dump(err))
+    end
+
+    if not (res and (val == nil or val["status"] == 0)) then
+        local file = nil
+        if val ~= nil and val["stderr"] then
+            if mp.get_property("options/terminal") == "no" then
+                file = io.open(string.format(tmp .. "/mpv-gif-ffmpeg.%s.log", os.time()), "w")
+                file:write(string.format("ffmpeg error %d:\n%s", val["status"], val["stderr"]))
+                file:close()
+            else
+                msg.error(val["stderr"])
+            end
+        else
+            if mp.get_property("options/terminal") == "no" then
+                file = io.open(string.format(tmp .. "/mpv-gif-ffmpeg.%s.log", os.time()), "w")
+                file:write(string.format("ffmpeg error:\n%s", err))
+                file:close()
+            else
+                msg.error("Error msg: " .. err)
+            end
+        end
+
+        local message = string.format('[GIF] Command "%s" execution was unsuccessful', command)
+        msg.error(message)
+        mp.osd_message(message)
+        return -1
+    end
+
+    return 0
+end
+
+local function get_tracks()
+    -- retrieve information about currently selected tracks
+    local tracks, err = utils.parse_json(mp.get_property("track-list"))
+    if tracks == nil then
+        msg.warning("Couldn't parse track-list")
+        return
+    end
+
+    local video = nil
+    local has_sub = false
+    local sub = nil
+
+    for _, track in ipairs(tracks) do
+        has_sub = has_sub or track["type"] == "sub"
+
+        if track["selected"] == true then
+            if track["type"] == "video" then
+                video = {id=track["id"]}
+            elseif track["type"] == "sub" then
+                sub = {id=track["id"], codec=track["codec"]}
+            end
+
+        end
+    end
+
+    return video, sub, has_sub
+end
+
+local function get_options()
+    local options = shallow_copy(default_options)
+    mp.options.read_options(options, "gifgen")
+
+    options.outputDirectory = expand_string(options.outputDirectory)
+    options.ytdlpCmd = expand_string(options.ytdlpCmd)
+    options.ffmpegCmd = expand_string(options.ffmpegCmd)
+    options.ffprogCmd = expand_string(options.ffprogCmd)
+
+    log_verbose("[GIF][OPTIONS]:", utils.to_string(default_options))
+
+    return options
+end
+
+local function get_file_options(options)
+    local save_video = options.mode == 'video' or options.mode == 'all'
+    local save_gif = options.mode == 'gif' or options.mode == 'all' or save_video == false
+    local hash_name = uuid()
+    local temp_location = IS_WINDOWS and ffmpeg_esc(os.getenv("TEMP")) or "/tmp"
+    temp_location = temp_location .. '/gifgen/' .. hash_name
+    local palette = temp_location .. "/mpv-gif-gen_palette.png"
+    local segment_base = "mpv-gif-gen_segment"
+    local segment_cmd = segment_base .. ".%(ext)s"
+    local segment = temp_location .. "/" .. segment_base .. ".mp4"
+    local gifname, videoname, videoext = get_file_names(options)
+    local filters = ''
+
+    if options.customFilters == nil or options.customFilters == "" then
+        -- Set this to the filters to pass into ffmpeg's -vf option.
+        -- filters="fps=24,scale='trunc(ih*dar/2)*2:trunc(ih/2)*2',setsar=1/1,scale=320:-1:flags=lanczos"
+        filters = options.fps < 0 and "" or string.format("fps=%d,", options.fps)
+        filters = filters .. string.format(
+            "scale='trunc(ih*dar/2)*2:trunc(ih/2)*2',setsar=1/1,scale=%d:%d:flags=%s",
+            options.width, options.height, options.flags
+        )
+    else
+        filters = string.format(
+            options.customFilters,
+            options.width, options.height, options.flags
+        )
+    end
+
+    log_verbose("[GIF][TMP] Location:", temp_location)
+
+    local file_options = {
+        save_video = save_video,
+        save_gif = save_gif,
+        hash = hash_name,
+        tmp = temp_location,
+        palette = palette,
+        segment = segment,
+        segment_base = segment_base,
+        segment_cmd = segment_cmd,
+        gifname = gifname,
+        videoname = videoname,
+        videoext = videoext,
+        filters = filters,
+    }
+
+    log_verbose("[GIF] File opts:", file_options)
+
+    return file_options
+end
+
 local function copy_file(target, destination, tmp)
     -- TODO: Allow custom copy command in config
-    local cp = IS_WINDOWS and 'copy' or 'cp'
-    local old = IS_WINDOWS and win_dir_esc(target) or target
-    local new = IS_WINDOWS and win_dir_esc(destination) or destination
-    local args_cp = { cp, old, new }
+    local args_cp = IS_WINDOWS and {
+        -- Insert reference: "Look what they need to mimic a fraction of our power" 
+        -- Using powershell (although slower up-time) as cmd copy command
+        -- only accept '\' in the path. It is fine to change slash into
+        -- backslash for os.execute but it seems to have issues with
+        -- subprocess command. Either subprocess fails because of backslashes
+        -- in strings or cmd complains of invalid syntax with forward slash.
+        -- This can't use os.execute as the copy could take too much
+        -- time for a blockeing call. Would be nice to have a proper
+        -- executable for copy thus it may be useful to support custom
+        -- commands in the future.
+        "powershell",
+        "-NoLogo",
+        "-NonInteractive",
+        "-NoProfile",
+        "-Command",
+        "Copy-Item",
+        target,
+        destination
+        -- "cmd",
+        -- "/c",
+        -- "copy", 
+        -- target, -- cmd doesn't like 
+        -- destination, -- cmd does't like
+        -- win_dir_esc_str(target), -- subprocess doesn't like
+        -- win_dir_esc_str(destination), -- subprocess doesn't like
+    } or {
+        "cp",
+        target,
+        destination,
+    }
+
     local cp_cmd = {
         name = "subprocess",
         args = args_cp,
@@ -258,8 +445,10 @@ local function copy_file(target, destination, tmp)
         capture_stderr = true
     }
 
+    log_verbose(string.format("[GIF][ARGS] cp:"), dump(args_cp))
+
     mp.command_native_async(cp_cmd, function (res, val, err)
-        if log_command_result(res, val, err, cp, tmp) ~= 0 then
+        if log_command_result(res, val, err, 'cp', tmp) ~= 0 then
             return
         end
 
@@ -336,102 +525,7 @@ local function cut_video(start_time_l, end_time_l, pathname, options, file_optio
     end)
 end
 
-local function get_options()
-    local options = shallow_copy(default_options)
-    mp.options.read_options(options, "gifgen")
-
-    options.outputDirectory = expand_string(options.outputDirectory)
-    options.ytdlpCmd = expand_string(options.ytdlpCmd)
-    options.ffmpegCmd = expand_string(options.ffmpegCmd)
-    options.ffprogCmd = expand_string(options.ffprogCmd)
-
-    log_verbose("[OPTIONS]:", utils.to_string(default_options))
-
-    return options
-end
-
-local function get_file_options(options)
-    local save_video = options.mode == 'video' or options.mode == 'all'
-    local save_gif = options.mode == 'gif' or options.mode == 'all' or save_video == false
-    local hash_name = uuid()
-    local temp_location = IS_WINDOWS and ffmpeg_esc(os.getenv("TEMP")) or "/tmp"
-    temp_location = temp_location .. '/' .. hash_name
-    local palette = temp_location .. "/mpv-gif-gen_palette.png"
-    local segment_base = "mpv-gif-gen_segment"
-    local segment_cmd = segment_base .. ".%(ext)s"
-    local segment = temp_location .. "/" .. segment_base .. ".mp4"
-    local gifname, videoname, videoext = get_file_names(options)
-    local filters = ''
-
-    if options.customFilters == nil or options.customFilters == "" then
-        -- Set this to the filters to pass into ffmpeg's -vf option.
-        -- filters="fps=24,scale='trunc(ih*dar/2)*2:trunc(ih/2)*2',setsar=1/1,scale=320:-1:flags=lanczos"
-        filters = options.fps < 0 and "" or string.format("fps=%d,", options.fps)
-        filters = filters .. string.format(
-            "scale='trunc(ih*dar/2)*2:trunc(ih/2)*2',setsar=1/1,scale=%d:%d:flags=%s",
-            options.width, options.height, options.flags
-        )
-    else
-        filters = string.format(
-            options.customFilters,
-            options.width, options.height, options.flags
-        )
-    end
-
-
-    local file_options = {
-        save_video = save_video,
-        save_gif = save_gif,
-        hash = hash_name,
-        tmp = temp_location,
-        palette = palette,
-        segment = segment,
-        segment_base = segment_base,
-        segment_cmd = segment_cmd,
-        gifname = gifname,
-        videoname = videoname,
-        videoext = videoext,
-        filters = filters,
-    }
-
-    return file_options
-end
-
--- Global start and end_time
-start_time = -1
-end_time = -1
--- save_vid = default_options.mode == 'video' or default_options.mode == 'all'
--- save_gif = default_options.mode == 'gif' or default_options.mode == 'all'
--- hash_name = uuid()
--- temp_location = IS_WINDOWS and ffmpeg_esc(os.getenv("TEMP")) or "/tmp"
--- temp_location = temp_location .. '/' .. hash_name
--- palette = temp_location .. "/mpv-gif-gen_palette.png"
--- segment_base = "mpv-gif-gen_segment"
--- segment = segment_base .. ".%(ext)s"
-
-function make_gif_with_subtitles()
-    local options = get_options()
-    local file_options = get_file_options(options)
-    ensure_out_dir(file_options.tmp)
-    if is_local_file() then
-        make_gif_internal(start_time, end_time, true, options, file_options, get_path())
-    else
-        download_video_segment(start_time, end_time, true, options, file_options)
-    end
-end
-
-function make_gif()
-    local options = get_options()
-    local file_options = get_file_options(options)
-    ensure_out_dir(file_options.tmp)
-    if is_local_file() then
-        make_gif_internal(start_time, end_time, false, options, file_options, get_path())
-    else
-        download_video_segment(start_time, end_time, false, options, file_options)
-    end
-end
-
-function download_video_segment(start_time_l, end_time_l, burn_subtitles, options, file_options)
+local function download_video_segment(start_time_l, end_time_l, burn_subtitles, options, file_options)
     -- Check time setup is in range
     if start_time_l == -1 or end_time_l == -1 or start_time_l >= end_time_l then
         mp.osd_message("Invalid start/end time.")
@@ -471,7 +565,7 @@ function download_video_segment(start_time_l, end_time_l, burn_subtitles, option
         -- table.insert(args_ytdlp, "mp4")
     end
 
-    log_verbose("[ARGS] yt-dlp:", dump(args_ytdlp))
+    log_verbose("[GIF][ARGS] yt-dlp:", dump(args_ytdlp))
 
     local ytdlp_cmd = {
         name = "subprocess",
@@ -487,7 +581,7 @@ function download_video_segment(start_time_l, end_time_l, burn_subtitles, option
         end
 
         local segment = file_options.segment
-        local message = "Video segment downloaded: " .. segment
+        local message = string.format("Video segment downloaded: %s", segment)
         local duration = end_time_l - start_time_l
         msg.info(message)
         mp.osd_message(message)
@@ -502,75 +596,7 @@ function download_video_segment(start_time_l, end_time_l, burn_subtitles, option
     end)
 end
 
-
-function log_command_result(res, val, err, command, tmp)
-    command = command or "command"
-    log_verbose("[RES] " .. command .. " :", res)
-
-    if val ~= nil then
-        log_verbose("[VAL]:", dump(val))
-    end
-
-    if err ~= nil then
-        log_verbose("[ERR]:", dump(err))
-    end
-
-    if not (res and (val == nil or val["status"] == 0)) then
-        if val ~= nil and val["stderr"] then
-            if mp.get_property("options/terminal") == "no" then
-                file = io.open(string.format(tmp .. "/mpv-gif-ffmpeg.%s.log", os.time()), "w")
-                file:write(string.format("ffmpeg error %d:\n%s", val["status"], val["stderr"]))
-                file:close()
-            else
-                msg.error(val["stderr"])
-            end
-        else
-            if mp.get_property("options/terminal") == "no" then
-                file = io.open(string.format(tmp .. "/mpv-gif-ffmpeg.%s.log", os.time()), "w")
-                file:write(string.format("ffmpeg error:\n%s", err))
-                file:close()
-            else
-                msg.error("Error msg: " .. err)
-            end
-        end
-
-        msg.error("GIF generation was unsuccessful")
-        mp.osd_message("error creating GIF")
-        return -1
-    end
-
-    return 0
-end
-
-function get_tracks()
-    -- retrieve information about currently selected tracks
-    local tracks, err = utils.parse_json(mp.get_property("track-list"))
-    if tracks == nil then
-        msg.warning("Couldn't parse track-list")
-        return
-    end
-
-    local video = nil
-    local has_sub = false
-    local sub = nil
-
-    for _, track in ipairs(tracks) do
-        has_sub = has_sub or track["type"] == "sub"
-
-        if track["selected"] == true then
-            if track["type"] == "video" then
-                video = {id=track["id"]}
-            elseif track["type"] == "sub" then
-                sub = {id=track["id"], codec=track["codec"]}
-            end
-
-        end
-    end
-
-    return video, sub, has_sub
-end
-
-function make_gif_internal(start_time_l, end_time_l, burn_subtitles, options, file_options, pathname)
+local function make_gif_internal(start_time_l, end_time_l, burn_subtitles, options, file_options, pathname)
     -- Check time setup is in range
     if start_time_l == -1 or end_time_l == -1 or start_time_l >= end_time_l then
         mp.osd_message("Invalid start/end time.")
@@ -655,8 +681,8 @@ function make_gif_internal(start_time_l, end_time_l, burn_subtitles, options, fi
         capture_stderr = true
     }
 
-    log_verbose("[ARGS] ffmpeg palette:", dump(args_palette))
-    log_verbose("[ARGS] ffmpeg gif:", dump(args_gif))
+    log_verbose("[GIF][ARGS] ffmpeg palette:", dump(args_palette))
+    log_verbose("[GIF][ARGS] ffmpeg gif:", dump(args_gif))
 
     -- first, create the palette
     mp.command_native_async(palette_cmd, function(res, val, err)
@@ -682,6 +708,8 @@ function make_gif_internal(start_time_l, end_time_l, burn_subtitles, options, fi
     end
 end
 
+-- Functions for keybindings
+
 function set_gif_start()
     start_time = mp.get_property_number("time-pos", -1)
     mp.osd_message("GIF Start: " .. start_time)
@@ -692,16 +720,26 @@ function set_gif_end()
     mp.osd_message("GIF End: " .. end_time)
 end
 
--- Remnant: Allow similar behavior to mkdir -p in linux
-function split(inputstr, sep)
-    if sep == nil then
-        sep = "%s"
+function make_gif_with_subtitles()
+    local options = get_options()
+    local file_options = get_file_options(options)
+    ensure_out_dir(file_options.tmp)
+    if is_local_file() then
+        make_gif_internal(start_time, end_time, true, options, file_options, get_path())
+    else
+        download_video_segment(start_time, end_time, true, options, file_options)
     end
-    local t={}
-    for str in string.gmatch(inputstr, "([^"..sep.."]+)") do
-        table.insert(t, str)
+end
+
+function make_gif()
+    local options = get_options()
+    local file_options = get_file_options(options)
+    ensure_out_dir(file_options.tmp)
+    if is_local_file() then
+        make_gif_internal(start_time, end_time, false, options, file_options, get_path())
+    else
+        download_video_segment(start_time, end_time, false, options, file_options)
     end
-    return t
 end
 
 local lower_key = string.lower(default_options.key)
@@ -711,7 +749,7 @@ local end_time_key = default_options.keyEndTime ~= "" and default_options.keyEnd
 local make_gif_key = default_options.keyMakeGif ~= "" and default_options.keyMakeGif or string.format("Ctrl+%s", lower_key)
 local make_gif_sub_key = default_options.keyMakeGifSub ~= "" and default_options.keyMakeGifSub or string.format("Ctrl+%s", upper_key)
 
-log_verbose("Keybindings:", dump({
+log_verbose("[GIF] Keybindings:", dump({
     lower_key,
     upper_key,
     start_time_key,
