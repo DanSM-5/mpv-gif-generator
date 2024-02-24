@@ -98,7 +98,7 @@ end
 
 local function clean_string(s)
     -- Remove problematic chars from strings
-    return string.gsub(s, "[\\/|?*%[%]\"\'>< ]", [[_]])
+    return string.gsub(s, "[\\/|?*%[%]\"\'>< ]", [[_]]):gsub("[\n\r]", [[]])
 end
 
 local function has_subtitles(filepath)
@@ -525,77 +525,6 @@ local function cut_video(start_time_l, end_time_l, pathname, options, file_optio
     end)
 end
 
-local function download_video_segment(start_time_l, end_time_l, burn_subtitles, options, file_options)
-    -- Check time setup is in range
-    if start_time_l == -1 or end_time_l == -1 or start_time_l >= end_time_l then
-        mp.osd_message("Invalid start/end time.")
-        return
-    end
-
-    msg.info("Start video segment download" .. (burn_subtitles and " (with subtitles)" or ""))
-    mp.osd_message("Start video segment download" .. (burn_subtitles and " (with subtitles)" or ""))
-
-    local url = mp.get_property("path", "")
-
-    local args_ytdlp = {
-        options.ytdlpCmd,
-        "-v", -- For debug
-        "--download-sections", "*" .. start_time_l .. "-" .. end_time_l, -- Specify download segment
-        "--force-keyframes-at-cuts", -- Force cut at specify segment
-        "-S", "proto:https", -- Avoid hls m3u8 for ffmpeg bug (https://github.com/yt-dlp/yt-dlp/issues/7824)
-        "--path", file_options.tmp, -- Path to download video
-        "--output", file_options.segment_cmd, -- Name of the out file
-        "--force-overwrites", -- Always overwrite previous file with same name in tmp dir
-        "-f", "mp4", -- Select video format. Setting mp4 to get a mp4 container
-        -- "--remux-video", "mp4", -- Force always getting a mp4
-        url,
-    }
-
-    -- Pass flags to embed subtitles. Subtitles support depend on video.
-    if burn_subtitles then
-        -- Embed Subtitles
-        -- https://www.reddit.com/r/youtubedl/comments/wrjaa6/burn_subtitle_while_downloading_video
-        table.insert(args_ytdlp, "--embed-subs")
-        table.insert(args_ytdlp, "--sub-langs")
-        table.insert(args_ytdlp, options.ytdlpSubLang)
-        -- TODO: Study if these options can be used
-        -- table.insert(args_ytdlp, "--postprocessor-args")
-        -- table.insert(args_ytdlp, "EmbedSubtitle:-disposition:s:0 forced")
-        -- table.insert(args_ytdlp, "--merge-output-format")
-        -- table.insert(args_ytdlp, "mp4")
-    end
-
-    log_verbose("[GIF][ARGS] yt-dlp:", dump(args_ytdlp))
-
-    local ytdlp_cmd = {
-        name = "subprocess",
-        args = args_ytdlp,
-        capture_stdout = true,
-        capture_stderr = true
-    }
-
-    -- Download video segment
-    mp.command_native_async(ytdlp_cmd, function(res, val, err)
-        if log_command_result(res, val, err, "yt-dlp", file_options.tmp) ~= 0 then
-            return
-        end
-
-        local segment = file_options.segment
-        local message = string.format("Video segment downloaded: %s", segment)
-        local duration = end_time_l - start_time_l
-        msg.info(message)
-        mp.osd_message(message)
-
-        if file_options.save_gif then
-            make_gif_internal(0, duration, burn_subtitles, options, file_options, segment)
-        end
-
-        if file_options.save_video and file_options.videoname then
-            copy_file(segment, file_options.videoname, file_options.tmp)
-        end
-    end)
-end
-
 local function make_gif_internal(start_time_l, end_time_l, burn_subtitles, options, file_options, pathname)
     -- Check time setup is in range
     if start_time_l == -1 or end_time_l == -1 or start_time_l >= end_time_l then
@@ -706,6 +635,77 @@ local function make_gif_internal(start_time_l, end_time_l, burn_subtitles, optio
     if is_local_file() and file_options.save_video then
         cut_video(start_time_l, end_time_l, pathname, options, file_options)
     end
+end
+
+local function download_video_segment(start_time_l, end_time_l, burn_subtitles, options, file_options)
+    -- Check time setup is in range
+    if start_time_l == -1 or end_time_l == -1 or start_time_l >= end_time_l then
+        mp.osd_message("Invalid start/end time.")
+        return
+    end
+
+    msg.info("Start video segment download" .. (burn_subtitles and " (with subtitles)" or ""))
+    mp.osd_message("Start video segment download" .. (burn_subtitles and " (with subtitles)" or ""))
+
+    local url = mp.get_property("path", "")
+
+    local args_ytdlp = {
+        options.ytdlpCmd,
+        "-v", -- For debug
+        "--download-sections", "*" .. start_time_l .. "-" .. end_time_l, -- Specify download segment
+        "--force-keyframes-at-cuts", -- Force cut at specify segment
+        "-S", "proto:https", -- Avoid hls m3u8 for ffmpeg bug (https://github.com/yt-dlp/yt-dlp/issues/7824)
+        "--path", file_options.tmp, -- Path to download video
+        "--output", file_options.segment_cmd, -- Name of the out file
+        "--force-overwrites", -- Always overwrite previous file with same name in tmp dir
+        "-f", "mp4", -- Select video format. Setting mp4 to get a mp4 container
+        -- "--remux-video", "mp4", -- Force always getting a mp4
+        url,
+    }
+
+    -- Pass flags to embed subtitles. Subtitles support depend on video.
+    if burn_subtitles then
+        -- Embed Subtitles
+        -- https://www.reddit.com/r/youtubedl/comments/wrjaa6/burn_subtitle_while_downloading_video
+        table.insert(args_ytdlp, "--embed-subs")
+        table.insert(args_ytdlp, "--sub-langs")
+        table.insert(args_ytdlp, options.ytdlpSubLang)
+        -- TODO: Study if these options can be used
+        -- table.insert(args_ytdlp, "--postprocessor-args")
+        -- table.insert(args_ytdlp, "EmbedSubtitle:-disposition:s:0 forced")
+        -- table.insert(args_ytdlp, "--merge-output-format")
+        -- table.insert(args_ytdlp, "mp4")
+    end
+
+    log_verbose("[GIF][ARGS] yt-dlp:", dump(args_ytdlp))
+
+    local ytdlp_cmd = {
+        name = "subprocess",
+        args = args_ytdlp,
+        capture_stdout = true,
+        capture_stderr = true
+    }
+
+    -- Download video segment
+    mp.command_native_async(ytdlp_cmd, function(res, val, err)
+        if log_command_result(res, val, err, "yt-dlp", file_options.tmp) ~= 0 then
+            return
+        end
+
+        local segment = file_options.segment
+        local message = string.format("Video segment downloaded: %s", segment)
+        local duration = end_time_l - start_time_l
+        msg.info(message)
+        mp.osd_message(message)
+
+        if file_options.save_gif then
+            make_gif_internal(0, duration, burn_subtitles, options, file_options, segment)
+        end
+
+        if file_options.save_video and file_options.videoname then
+            copy_file(segment, file_options.videoname, file_options.tmp)
+        end
+    end)
 end
 
 -- Functions for keybindings
