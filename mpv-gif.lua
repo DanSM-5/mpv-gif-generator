@@ -464,7 +464,7 @@ local function copy_file(target, destination, tmp)
     }
 
     log_verbose(string.format("[GIF][ARGS] cp:"), dump(args_cp))
-    delete_lock_file(target)
+    delete_lock_file(destination)
 
     mp.command_native_async(cp_cmd, function (res, val, err)
         if log_command_result(res, val, err, 'cp', tmp) ~= 0 then
