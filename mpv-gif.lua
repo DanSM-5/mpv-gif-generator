@@ -62,6 +62,19 @@ local function dump(o)
     end
 end
 
+local function create_lock_file(name)
+    -- "echo '' >> $name" should work to create an empty file on
+    -- windows (cmd) and linux.
+    -- os.execute(string.format("echo '' >> '%s'", name))
+    local f = io.open(name, "w")
+    if f ~= nil then io.close(f) return true else return false end
+end
+
+local function delete_lock_file(name)
+    local ok, err = os.remove(name)
+    return ok, err
+end
+
 local function is_local_file()
     -- Pathname for urls will be the url itself
     local pathname = mp.get_property("path", "")
@@ -344,7 +357,7 @@ local function get_options()
     local options = shallow_copy(default_options)
     mp.options.read_options(options, "gifgen")
 
-    options.outputDirectory = expand_string(options.outputDirectory)
+    options.outputDirectory = ffmpeg_esc(expand_string(options.outputDirectory))
     options.ytdlpCmd = expand_string(options.ytdlpCmd)
     options.ffmpegCmd = expand_string(options.ffmpegCmd)
     options.ffprogCmd = expand_string(options.ffprogCmd)
@@ -407,7 +420,7 @@ end
 local function copy_file(target, destination, tmp)
     -- TODO: Allow custom copy command in config
     local args_cp = IS_WINDOWS and {
-        -- Insert reference: "Look what they need to mimic a fraction of our power" 
+        -- Insert reference: "Look what they need to mimic a fraction of our power"
         -- Using powershell (although slower up-time) as cmd copy command
         -- only accept '\' in the path. It is fine to change slash into
         -- backslash for os.execute but it seems to have issues with
@@ -427,8 +440,8 @@ local function copy_file(target, destination, tmp)
         destination
         -- "cmd",
         -- "/c",
-        -- "copy", 
-        -- target, -- cmd doesn't like 
+        -- "copy",
+        -- target, -- cmd doesn't like
         -- destination, -- cmd does't like
         -- win_dir_esc_str(target), -- subprocess doesn't like
         -- win_dir_esc_str(destination), -- subprocess doesn't like
@@ -446,6 +459,7 @@ local function copy_file(target, destination, tmp)
     }
 
     log_verbose(string.format("[GIF][ARGS] cp:"), dump(args_cp))
+    delete_lock_file(target)
 
     mp.command_native_async(cp_cmd, function (res, val, err)
         if log_command_result(res, val, err, 'cp', tmp) ~= 0 then
@@ -514,6 +528,8 @@ local function cut_video(start_time_l, end_time_l, pathname, options, file_optio
         capture_stderr = true
     }
 
+    delete_lock_file(videoname)
+
     mp.command_native_async(cut_cmd, function (res, val, err)
         if log_command_result(res, val, err, 'ffmpeg->cut', file_options.tmp) ~= 0 then
             return
@@ -537,9 +553,6 @@ local function make_gif_internal(start_time_l, end_time_l, burn_subtitles, optio
     if gifname == nil then
         return
     end
-
-    -- Prepare out directory
-    ensure_out_dir(ffmpeg_esc(options.outputDirectory))
 
     local sel_video, sel_sub, has_sub = get_tracks()
 
@@ -613,6 +626,8 @@ local function make_gif_internal(start_time_l, end_time_l, burn_subtitles, optio
     log_verbose("[GIF][ARGS] ffmpeg palette:", dump(args_palette))
     log_verbose("[GIF][ARGS] ffmpeg gif:", dump(args_gif))
 
+    delete_lock_file(gifname)
+
     -- first, create the palette
     mp.command_native_async(palette_cmd, function(res, val, err)
         if log_command_result(res, val, err, "ffmpeg->palette", file_options.tmp) ~= 0 then
@@ -631,9 +646,26 @@ local function make_gif_internal(start_time_l, end_time_l, burn_subtitles, optio
             mp.osd_message(string.format("GIF created - %s", gifname), 2)
         end)
     end)
+end
 
-    if is_local_file() and file_options.save_video then
-        cut_video(start_time_l, end_time_l, pathname, options, file_options)
+local function process_local_video(start_time_l, end_time_l, with_subtitles, options, file_options, pathname, was_downloaded)
+    if file_options.save_gif then
+        make_gif_internal(start_time_l, end_time_l, with_subtitles, options, file_options, pathname)
+    else
+        delete_lock_file(options.gifname)
+    end
+
+    if file_options.save_video then
+        if was_downloaded then
+            -- Downloaded file already has the requested time
+            -- Just copy file to final destination
+            copy_file(pathname, file_options.videoname, file_options.tmp)
+        else
+            -- For local files it is required to cut the video with ffmpeg
+            cut_video(start_time_l, end_time_l, pathname, options, file_options)
+        end
+    else
+        delete_lock_file(options.videoname)
     end
 end
 
@@ -698,14 +730,37 @@ local function download_video_segment(start_time_l, end_time_l, burn_subtitles, 
         msg.info(message)
         mp.osd_message(message)
 
-        if file_options.save_gif then
-            make_gif_internal(0, duration, burn_subtitles, options, file_options, segment)
-        end
+        -- if file_options.save_gif then
+        --     make_gif_internal(0, duration, burn_subtitles, options, file_options, segment)
+        -- end
 
-        if file_options.save_video and file_options.videoname then
-            copy_file(segment, file_options.videoname, file_options.tmp)
-        end
+        -- if file_options.save_video and file_options.videoname then
+        --     copy_file(segment, file_options.videoname, file_options.tmp)
+        -- end
+        process_local_video(0, duration, burn_subtitles, options, file_options, segment, true)
     end)
+end
+
+local function process_gif_request(with_subtitles)
+    local start_time_l = start_time
+    local end_time_l = end_time
+    local options = get_options()
+    local file_options = get_file_options(options)
+    -- Prepare temporary files directory
+    ensure_out_dir(file_options.tmp)
+    -- Prepare out directory
+    ensure_out_dir(options.outputDirectory)
+
+    -- Prevent two calls to make gif override themselves
+    -- due to same file names.
+    create_lock_file(file_options.gifname)
+    create_lock_file(file_options.videoname)
+
+    if is_local_file() then
+        process_local_video(start_time_l, end_time_l, with_subtitles, options, file_options, get_path(), false)
+    else
+        download_video_segment(start_time_l, end_time_l, with_subtitles, options, file_options)
+    end
 end
 
 -- Functions for keybindings
@@ -721,25 +776,11 @@ function set_gif_end()
 end
 
 function make_gif_with_subtitles()
-    local options = get_options()
-    local file_options = get_file_options(options)
-    ensure_out_dir(file_options.tmp)
-    if is_local_file() then
-        make_gif_internal(start_time, end_time, true, options, file_options, get_path())
-    else
-        download_video_segment(start_time, end_time, true, options, file_options)
-    end
+    process_gif_request(true)
 end
 
 function make_gif()
-    local options = get_options()
-    local file_options = get_file_options(options)
-    ensure_out_dir(file_options.tmp)
-    if is_local_file() then
-        make_gif_internal(start_time, end_time, false, options, file_options, get_path())
-    else
-        download_video_segment(start_time, end_time, false, options, file_options)
-    end
+    process_gif_request(false)
 end
 
 local lower_key = string.lower(default_options.key)
