@@ -40,6 +40,8 @@ starting mpv through the `*.desktop` entry (i.e. file explorer, …)
 
 ## Usage
 
+### Keybindings
+
 The script has one key configurable which can be any key from A-Z in the keyboard. The default key is "g" if not configured. The case is insensitive. See the table using the default "g".
 
 | shortcut          | effect                    |
@@ -79,7 +81,7 @@ The script can be configured either by having a `script-opts/gifgen.conf` or usi
 # Default configs
 
 # fps for output (can be -1 for source fps).
-fps=15
+fps=-1
 
 # Width of the resulting gif.
 width=600
@@ -123,6 +125,16 @@ ytdlpCmd=yt-dlp
 # If adding subtitles and video is played by yt-dlp, this will be passed to yt-dlp to filter
 # the language of the subtitles. Default to english only subtitles.
 ytdlpSubLang="en.*"
+
+# When cutting a local video you can specify a codec for reencoding the video like "libx256"
+# Using "copy" will preserver the original video codec.
+# This does not apply to videos played with yt-dlp.
+copyVideoCodec="copy"
+
+# When cutting a local video you can specify a codec for reencoding the audio like "aac"
+# Using "copy" will preserver the original audio codec.
+# This does not apply to videos played with yt-dlp.
+copyAudioCodec="copy"
 
 # Add additional logs for debbuging
 debug=false

@@ -15,7 +15,7 @@ end_time = -1
 -- options
 -- require 'mp.options'
 local default_options = {
-    fps = 15,
+    fps = -1,
     width = 600,
     height = -1,
     extension = "gif", -- file extension by default
@@ -31,6 +31,8 @@ local default_options = {
     ffprogCmd = "ffprog",
     ytdlpCmd = "yt-dlp",
     ytdlpSubLang = "en.*",
+    copyVideoCodec = "copy",
+    copyAudioCodec = "copy",
     debug = false, -- for debug
     mode = "gif"
 }
@@ -513,8 +515,7 @@ local function cut_video(start_time_l, end_time_l, pathname, options)
 
     local videoname = options.videoname
 
-    -- TODO: consider using 'copy' or allow configurable
-    -- codecs for re-encoding 'libx264' and 'aac'
+    -- Codecs for re-encoding 'libx264' and 'aac'
     -- Ref: https://shotstack.io/learn/use-ffmpeg-to-trim-video/
     local args_cut = {
         options.ffmpegCmd,
@@ -522,8 +523,9 @@ local function cut_video(start_time_l, end_time_l, pathname, options)
         "-ss", tostring(position), "-t", tostring(duration),  -- define which part to use
         "-accurate_seek",
         "-i", pathname, -- input file
-        "-c:v", "libx264", -- Re-encode video
-        "-c:a", "copy", videoname, -- output file
+        "-c:v", options.copyVideoCodec, -- Use codec for video e.g. "libx264"
+        "-c:a", options.copyAudioCodec, -- Use codec for audio e.g. "aac"
+        videoname, -- output file
     }
 
     local cut_cmd = {
