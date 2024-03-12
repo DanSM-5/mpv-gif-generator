@@ -113,7 +113,7 @@ end
 
 local function clean_string(s)
     -- Remove problematic chars from strings
-    return string.gsub(s, "[\\/|?*%[%]\"\'>< ]", [[_]]):gsub("[\n\r]", [[]])
+    return string.gsub(s, "[\\/|!?*%[%]\"\'><, ]", [[_]]):gsub("[\n\r]", [[]])
 end
 
 local function has_subtitles(filepath)
@@ -443,8 +443,10 @@ local function copy_file(target, destination, tmp)
         "-NoProfile",
         "-Command",
         "Copy-Item",
-        target,
-        destination
+        "-Path",
+        string.format("'%s'", target),
+        "-Destination",
+        string.format("'%s'", destination)
         -- "cmd",
         -- "/c",
         -- "copy",
@@ -465,7 +467,7 @@ local function copy_file(target, destination, tmp)
         capture_stderr = true
     }
 
-    log_verbose(string.format("[GIF][ARGS] cp:"), dump(args_cp))
+    log_verbose("[GIF][ARGS] cp:", dump(args_cp))
     delete_lock_file(destination)
 
     mp.command_native_async(cp_cmd, function (res, val, err)
