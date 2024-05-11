@@ -77,6 +77,12 @@ local function delete_lock_file(name)
     return ok, err
 end
 
+local function replace_lock_file(source, destination)
+    delete_lock_file(destination)
+    local ok, err = os.rename(source, destination)
+    return ok, err
+end
+
 local function is_local_file()
     -- Pathname for urls will be the url itself
     local pathname = mp.get_property("path", "")
@@ -359,13 +365,15 @@ local function get_file_options(options)
     local save_video = options.mode == 'video' or options.mode == 'all'
     local save_gif = options.mode == 'gif' or options.mode == 'all' or save_video == false
     local hash_name = uuid()
+    local gifname, videoname, videoext = get_file_names(options)
     local temp_location = IS_WINDOWS and ffmpeg_esc(os.getenv("TEMP")) or "/tmp"
     temp_location = temp_location .. '/gifgen/' .. hash_name
     local palette = temp_location .. "/mpv-gif-gen_palette.png"
+    local tmpvideo = temp_location .. "/mpv-gif-gen_tmpvideo" .. '.' .. videoext
+    local tmpgif = temp_location .. "/mpv-gif-gen_tmpgif" .. '.' .. options.extension
     local segment_base = "mpv-gif-gen_segment"
     local segment_cmd = segment_base .. ".%(ext)s"
     local segment = temp_location .. "/" .. segment_base .. ".mp4"
-    local gifname, videoname, videoext = get_file_names(options)
     local filters = ''
 
     if options.customFilters == nil or options.customFilters == "" then
@@ -392,6 +400,8 @@ local function get_file_options(options)
         tmp = temp_location,
         palette = palette,
         segment = segment,
+        tmpvideo = tmpvideo,
+        tmpgif = tmpgif,
         segment_base = segment_base,
         segment_cmd = segment_cmd,
         gifname = gifname,
@@ -408,6 +418,11 @@ end
 local function get_options()
     local options = shallow_copy(default_options)
     mp.options.read_options(options, "gifgen")
+
+    -- Enable verbose if requested
+    log_verbose = options.debug and function (...)
+        msg.info(...)
+    end or function (...) end
 
     options.outputDirectory = ffmpeg_esc(expand_string(options.outputDirectory))
     options.ytdlpCmd = expand_string(options.ytdlpCmd)
@@ -443,6 +458,7 @@ local function copy_file(target, destination, tmp)
         "-NoProfile",
         "-Command",
         "Copy-Item",
+        "-Force",
         "-Path",
         string.format("'%s'", target),
         "-Destination",
@@ -455,7 +471,9 @@ local function copy_file(target, destination, tmp)
         -- win_dir_esc_str(target), -- subprocess doesn't like
         -- win_dir_esc_str(destination), -- subprocess doesn't like
     } or {
+        "command",
         "cp",
+        "-f",
         target,
         destination,
     }
@@ -468,10 +486,10 @@ local function copy_file(target, destination, tmp)
     }
 
     log_verbose("[GIF][ARGS] cp:", dump(args_cp))
-    delete_lock_file(destination)
 
     mp.command_native_async(cp_cmd, function (res, val, err)
         if log_command_result(res, val, err, 'cp', tmp) ~= 0 then
+            delete_lock_file(destination)
             return
         end
 
@@ -512,10 +530,12 @@ local function cut_video(start_time_l, end_time_l, pathname, options)
     -- Check time setup is in range
     if start_time_l == -1 or end_time_l == -1 or start_time_l >= end_time_l then
         mp.osd_message("Invalid start/end time.")
+        delete_lock_file(options.videoname)
         return
     end
 
     local videoname = options.videoname
+    local tmpvideo = options.tmpvideo
 
     -- Codecs for re-encoding 'libx264' and 'aac'
     -- Ref: https://shotstack.io/learn/use-ffmpeg-to-trim-video/
@@ -527,7 +547,7 @@ local function cut_video(start_time_l, end_time_l, pathname, options)
         "-i", pathname, -- input file
         "-c:v", options.copyVideoCodec, -- Use codec for video e.g. "libx264"
         "-c:a", options.copyAudioCodec, -- Use codec for audio e.g. "aac"
-        videoname, -- output file
+        tmpvideo, -- output file
     }
 
     local cut_cmd = {
@@ -537,14 +557,24 @@ local function cut_video(start_time_l, end_time_l, pathname, options)
         capture_stderr = true
     }
 
-    delete_lock_file(videoname)
-
     mp.command_native_async(cut_cmd, function (res, val, err)
         if log_command_result(res, val, err, 'ffmpeg->cut', options.tmp) ~= 0 then
+            delete_lock_file(options.videoname)
             return
         end
 
         local message = string.format('Video created - %s', videoname)
+        local success_replace, err_replace = replace_lock_file(tmpvideo, videoname)
+
+        if not success_replace then
+            message = string.format("Error copying to destination. Gif in: %s", tmpvideo)
+            mp.osd_message(message, 2)
+            msg.info(message)
+            msg.info(err_replace)
+            delete_lock_file(videoname)
+            return
+        end
+
         msg.info(message)
         mp.osd_message(message)
     end)
@@ -554,12 +584,15 @@ local function make_gif_internal(start_time_l, end_time_l, burn_subtitles, optio
     -- Check time setup is in range
     if start_time_l == -1 or end_time_l == -1 or start_time_l >= end_time_l then
         mp.osd_message("Invalid start/end time.")
+        delete_lock_file(options.gifname)
         return
     end
 
     -- abort if no gifname available
     local gifname = options.gifname
+    local tmpgif = options.tmpgif
     if gifname == nil then
+        delete_lock_file(gifname)
         return
     end
 
@@ -568,6 +601,7 @@ local function make_gif_internal(start_time_l, end_time_l, burn_subtitles, optio
     if sel_video == nil then
         mp.osd_message("GIF abort: no video")
         msg.info("No video selected")
+        delete_lock_file(gifname)
         return
     end
 
@@ -615,7 +649,7 @@ local function make_gif_internal(start_time_l, end_time_l, burn_subtitles, optio
         "-an",  -- remove audio
         "-ss", tostring(position),  -- required for burning subtitles
         "-lavfi", filter_gif,
-        "-y", gifname  -- output
+        "-y", tmpgif  -- output
     }
 
     local palette_cmd = {
@@ -635,11 +669,10 @@ local function make_gif_internal(start_time_l, end_time_l, burn_subtitles, optio
     log_verbose("[GIF][ARGS] ffmpeg palette:", dump(args_palette))
     log_verbose("[GIF][ARGS] ffmpeg gif:", dump(args_gif))
 
-    delete_lock_file(gifname)
-
     -- first, create the palette
     mp.command_native_async(palette_cmd, function(res, val, err)
         if log_command_result(res, val, err, "ffmpeg->palette", options.tmp) ~= 0 then
+            delete_lock_file(gifname)
             return
         end
 
@@ -648,11 +681,24 @@ local function make_gif_internal(start_time_l, end_time_l, burn_subtitles, optio
         -- then, make the gif
         mp.command_native_async(gif_cmd, function(res, val, err)
             if log_command_result(res, val, err, "ffmpeg->gif", options.tmp) ~= 0 then
+                delete_lock_file(gifname)
                 return
             end
 
-            msg.info(string.format("GIF created - %s", gifname))
-            mp.osd_message(string.format("GIF created - %s", gifname), 2)
+            local completed_message = string.format("GIF created - %s", gifname)
+            local success_replace, err_replace = replace_lock_file(tmpgif, gifname)
+
+            if not success_replace then
+                completed_message = string.format("Error copying to destination. Gif in: %s", tmpgif)
+                mp.osd_message(completed_message, 2)
+                msg.info(completed_message)
+                msg.info(err_replace)
+                delete_lock_file(gifname)
+                return
+            end
+
+            msg.info(completed_message)
+            mp.osd_message(completed_message, 2)
         end)
     end)
 end
@@ -682,6 +728,8 @@ local function download_video_segment(start_time_l, end_time_l, burn_subtitles, 
     -- Check time setup is in range
     if start_time_l == -1 or end_time_l == -1 or start_time_l >= end_time_l then
         mp.osd_message("Invalid start/end time.")
+        delete_lock_file(options.gifname)
+        delete_lock_file(options.videoname)
         return
     end
 
@@ -730,6 +778,8 @@ local function download_video_segment(start_time_l, end_time_l, burn_subtitles, 
     -- Download video segment
     mp.command_native_async(ytdlp_cmd, function(res, val, err)
         if log_command_result(res, val, err, "yt-dlp", options.tmp) ~= 0 then
+            delete_lock_file(options.gifname)
+            delete_lock_file(options.videoname)
             return
         end
 
