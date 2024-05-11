@@ -111,7 +111,12 @@ end
 local function ffmpeg_esc(s)
     -- escape string to be used in ffmpeg arguments (i.e. filenames in filter)
     -- s = string.gsub(s, "/", IS_WINDOWS and "\\" or "/" ) -- Windows seems to work fine with forward slash '/'
-    s = string.gsub(s, [[\]], [[/]])
+    if IS_WINDOWS then
+        -- TODO: local files with quotes are escaped
+        -- and the next gsub change the escape to forward
+        -- slash breaking the file name
+        s = string.gsub(s, [[\]], [[/]])
+    end
     s = string.gsub(s, '"', '"\\""')
     s = string.gsub(s, "'", "\\'")
     return s
