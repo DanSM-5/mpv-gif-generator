@@ -151,7 +151,3 @@ flags="lanczos"
 # You will replace the string: "scale='trunc(ih*dar/2)*2:trunc(ih/2)*2',setsar=1/1,scale=%d:%d:flags=%s"
 customFilters=
 ```
-
-## Known issues
-
-- File names with single and double quotes (`'`, `"`) have scape issues

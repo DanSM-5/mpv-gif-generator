@@ -110,15 +110,20 @@ end
 
 local function ffmpeg_esc(s)
     -- escape string to be used in ffmpeg arguments (i.e. filenames in filter)
-    -- s = string.gsub(s, "/", IS_WINDOWS and "\\" or "/" ) -- Windows seems to work fine with forward slash '/'
+    -- s = string.gsub(s, "/", IS_WINDOWS and "\\" or "/" )
+    -- Windows seems to work fine with forward slash '/'
+    -- Change the paths if running on windows.
     if IS_WINDOWS then
         -- TODO: local files with quotes are escaped
         -- and the next gsub change the escape to forward
         -- slash breaking the file name
         s = string.gsub(s, [[\]], [[/]])
     end
-    s = string.gsub(s, '"', '"\\""')
-    s = string.gsub(s, "'", "\\'")
+
+    -- ffmpeg is working with names with quotes,
+    -- leave it commented for now.
+    -- s = string.gsub(s, '"', '"\\""')
+    -- s = string.gsub(s, "'", "\\'")
     return s
 end
 
@@ -224,8 +229,15 @@ end
 
 local function get_path()
     local is_absolute = nil
-    local pathname = mp.get_property("path", "")
-    pathname = ffmpeg_esc(pathname)
+    local initial_pathname = mp.get_property("path", "")
+    -- local filename = is_local and mp.get_property("filename/no-ext") or mp.get_property("media-title", mp.get_property("filename/no-ext"))
+
+    msg.info('Pathname 1: ' .. initial_pathname)
+    msg.info('Filename/no-ext: ' .. mp.get_property("filename/no-ext"))
+    msg.info('Media title: ' .. mp.get_property("media-title"))
+
+    local pathname = ffmpeg_esc(initial_pathname)
+    msg.info('Pathname 2: ' .. pathname)
 
     if IS_WINDOWS then
         is_absolute = string.find(pathname, "^[a-zA-Z]:[/\\]") ~= nil
@@ -233,12 +245,15 @@ local function get_path()
         is_absolute = string.find(pathname, "^/") ~= nil
     end
 
-    pathname = is_absolute and pathname or utils.join_path(
-        mp.get_property("working-directory", ""),
-        pathname
+    pathname = is_absolute and pathname or ffmpeg_esc(
+        utils.join_path(
+            mp.get_property("working-directory", ""),
+            initial_pathname
+        )
     )
 
-    return ffmpeg_esc(pathname)
+    msg.info('Pathname 3: ' .. pathname)
+    return pathname
 end
 
 -- Remnant: Allow similar behavior to mkdir -p in linux
@@ -854,6 +869,8 @@ log_verbose("[GIF] Keybindings:", dump({
     make_gif_key,
     make_gif_sub_key,
 }))
+
+mp.add_key_binding('Ctrl+t', 'get_path', get_path)
 
 mp.add_key_binding(start_time_key, "set_gif_start", set_gif_start)
 mp.add_key_binding(end_time_key, "set_gif_end", set_gif_end)
