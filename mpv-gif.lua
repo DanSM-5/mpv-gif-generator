@@ -113,7 +113,7 @@ end
 
 local function clean_string(s)
     -- Remove problematic chars from strings
-    return string.gsub(s, "[\\/|!?*%[%]\"\'><, ]", [[_]]):gsub("[\n\r]", [[]])
+    return string.gsub(s, "[\\/:|!?*%[%]\"\'><, ]", [[_]]):gsub("[\n\r]", [[]])
 end
 
 local function has_subtitles(filepath)
