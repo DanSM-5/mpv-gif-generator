@@ -473,6 +473,8 @@ local function copy_file(target, destination, tmp)
         -- executable for copy thus it may be useful to support custom
         -- commands in the future.
         "powershell",
+        "-WindowStyle",
+        "Hidden",
         "-NoLogo",
         "-NonInteractive",
         "-NoProfile",
