@@ -64,11 +64,6 @@ local default_options = {
     outputDirectory = "~/mpv-gifs", -- save to home directory by default
     flags = "lanczos", -- or "spline"
     customFilters = "",
-    key = "g", -- Default key. It will be used as "g": start, "G": end, "Ctrl+g" create non-sub, "Ctrl+G": create sub.
-    keyStartTime = "",
-    keyEndTime = "",
-    keyMakeGif = "",
-    keyMakeGifSub = "",
     ffmpegCmd = "ffmpeg",
     ffprogCmd = "ffprog",
     ytdlpCmd = "yt-dlp",
@@ -76,7 +71,14 @@ local default_options = {
     copyVideoCodec = "copy",
     copyAudioCodec = "copy",
     debug = false, -- for debug
-    mode = "gif"
+    mode = "gif",
+    -- NOTE: key related configs cannot be remaped on the fly
+    -- The other configs can be changed at any time
+    key = "g", -- Default key. It will be used as "g": start, "G": end, "Ctrl+g" create non-sub, "Ctrl+G": create sub.
+    keyStartTime = "",
+    keyEndTime = "",
+    keyMakeGif = "",
+    keyMakeGifSub = "",
 }
 
 -- Read options on startup. Later executions will read the options again
@@ -140,6 +142,8 @@ local function replace_lock_file(source, destination)
     return ok, err
 end
 
+---Check if the current playing asset is a video from the filesystem (local)
+---@return boolean If the playing asset is local
 local function is_local_file()
     -- Pathname for urls will be the url itself
     local pathname = mp.get_property("path", "")
@@ -166,10 +170,17 @@ end
 --     return string.gsub(s, '"', '"\\""')
 -- end
 
+---Escape colon character for windows absolute paths
+---@param s string Path to escape colons from
+---@return string Escaped string
 local function escape_colon(s)
-    return string.gsub(s, ":", "\\:")
+    local escaped = string.gsub(s, ":", "\\:")
+    return escaped
 end
 
+---Escape characters for ffmpeg
+---@param s string String to be processed
+---@return string Escaped string
 local function ffmpeg_esc(s)
     -- escape string to be used in ffmpeg arguments (i.e. filenames in filter)
     -- s = string.gsub(s, "/", IS_WINDOWS and "\\" or "/" )
@@ -189,11 +200,23 @@ local function ffmpeg_esc(s)
     return s
 end
 
+---Remove special characters from video/gif name to avoid issues
+---due to presence of special characters.
+---Carriage return and new line characters are removed. Others are
+---replaced by an underscore
+---@param s string string to be cleanup
+---@return string cleaned string
 local function clean_string(s)
     -- Remove problematic chars from strings
-    return string.gsub(s, "[\\/:|!?*%[%]\"\'><, ]", [[_]]):gsub("[\n\r]", [[]])
+    local escaped = string.gsub(s, "[\\/:|!?*%[%]\"\'><, ]", [[_]]):gsub("[\n\r]", [[]])
+    return escaped
 end
 
+---Check if the given path to a video asset containers
+---embedded subtitles.
+---This is not a 100% accurate check but it works most of the times
+---@param filepath string Path to video asset
+---@return boolean Whether or not the video contains subtitles
 local function has_subtitles(filepath)
     -- Command will return "subtitle" if subtitles are available (https://superuser.com/questions/1206714/ffmpeg-errors-out-when-no-subtitle-exists)
     local args_ffprobe = {
@@ -219,6 +242,9 @@ local function has_subtitles(filepath)
     return ffprobe_res ~= nil and ffprobe_res["stdout"] ~= nil and string.find(ffprobe_res["stdout"], "subtitle") ~= nil
 end
 
+---Expand special strings for mpv such as ~/, ~~/, etc.
+---@param s string String to expand
+---@return string Expanded string
 local function expand_string(s)
     -- expand given path (i.e. ~/, ~~/, …)
     local expand_res, expand_err = mp.command_native({ "expand-path", s })
@@ -226,6 +252,9 @@ local function expand_string(s)
 end
 
 --- Check if a file or directory exists in this path
+---@param file string Path to item in filesystem
+---@return boolean if the path exists
+---@return string|nil Error if path check could not be verified
 local function exists(file)
    local ok, err, code = os.rename(file, file)
    if not ok then
@@ -238,6 +267,8 @@ local function exists(file)
 end
 
 --- Check if a directory exists in this path
+---@param path string check if a path to a directory exists
+---@return boolean If the path exists
 local function is_dir(path)
    -- "/" works on both Unix and Windows
    return exists(path .. "/")
@@ -245,7 +276,7 @@ end
 
 --- Verify that path exists or creates it if not
 --- This rely on native shell commands per platform
---- @param pathname string
+--- @param pathname string Path to directory make if it doesn't exists
 local function ensure_out_dir(pathname)
     if is_dir(pathname) then
         return
@@ -268,10 +299,18 @@ local function ensure_out_dir(pathname)
     os.execute("mkdir " .. win_dir_esc(pathname))
 end
 
+---Check that path exists and it is a file with write permissions
+---@param name string Path to file to check
+---@return boolean If the name is a file and it is writable
 local function file_exists(name)
     -- io.open supports both '/' and '\' path separators
     local f = io.open(name, "r")
-    if f ~= nil then io.close(f) return true else return false end
+    if f ~= nil then
+        io.close(f)
+        return true
+    else
+      return false
+    end
 end
 
 -- TODO: Check for removal
@@ -282,6 +321,10 @@ end
 
 math.randomseed(os.time(), tonumber(tostring(os.time()):reverse():sub(1, 9)))
 local random = math.random
+---Generate a pseudo random UUID for temporary file storage
+---This ensures that multiple gifs can be made simultaneously without
+---temporary files conflicting due to sharing same name.
+---@return string new UUID
 local function uuid()
     local template ='xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'
     local id, _ = string.gsub(template, '[xy]', function (c)
@@ -292,17 +335,14 @@ local function uuid()
     return id
 end
 
+---Get the path of the playing asset from mpv
+---@return string
 local function get_path()
     local is_absolute = nil
-    local initial_pathname = mp.get_property("path", "")
+    local initial_pathname = mp.get_property('path', '')
     -- local filename = is_local and mp.get_property("filename/no-ext") or mp.get_property("media-title", mp.get_property("filename/no-ext"))
 
-    msg.info('Pathname 1: ' .. initial_pathname)
-    msg.info('Filename/no-ext: ' .. mp.get_property("filename/no-ext"))
-    msg.info('Media title: ' .. mp.get_property("media-title"))
-
     local pathname = ffmpeg_esc(initial_pathname)
-    msg.info('Pathname 2: ' .. pathname)
 
     if IS_WINDOWS then
         is_absolute = string.find(pathname, "^[a-zA-Z]:[/\\]") ~= nil
@@ -312,12 +352,15 @@ local function get_path()
 
     pathname = is_absolute and pathname or ffmpeg_esc(
         utils.join_path(
-            mp.get_property("working-directory", ""),
+            mp.get_property('working-directory', ''),
             initial_pathname
         )
     )
 
-    msg.info('Pathname 3: ' .. pathname)
+    log_verbose('[GIF][AssetPath] Filename/no-ext: ' .. mp.get_property('filename/no-ext'))
+    log_verbose('[GIF][AssetPath] Media title: ' .. mp.get_property('media-title'))
+    log_verbose('[GIF][AssetPath] Generated path: ' .. pathname)
+
     return pathname
 end
 
@@ -342,10 +385,10 @@ local function get_file_extension(name)
 end
 
 ---Define the file names to be used for the gif or video
----@param options BaseOptions
----@return string
----@return string
----@return string
+---@param options BaseOptions Options from the user
+---@return string Name to be assined to the gif file
+---@return string Name to be assined to the video file
+---@return string Extension to be used for the video file
 local function get_file_names(options)
     local is_local = is_local_file()
     local filename = is_local and mp.get_property("filename/no-ext") or mp.get_property("media-title", mp.get_property("filename/no-ext"))
@@ -378,9 +421,9 @@ local function get_file_names(options)
 end
 
 --- Create shallow copy of a table
----@generic T
----@param t T
----@return T
+---@generic T Table to be shallowed copied
+---@param t T Object table to be copied
+---@return T New table with same properties as original
 local function shallow_copy(t)
   local table = {}
   for k, v in pairs(t) do
@@ -389,6 +432,13 @@ local function shallow_copy(t)
   return table
 end
 
+---Log the result of async commands if using a log file
+---@param res string Result from native command
+---@param val { status: integer; stderr: string? }|nil Status code and stderror from native command
+---@param err string? Error if native command exited with non zero status code
+---@param command string command that was run
+---@param tmp string temporary location for files
+---@return integer 0 if native command succeded
 local function log_command_result(res, val, err, command, tmp)
     command = command or "command"
     log_verbose("[GIF][RES] " .. command .. " :", res)
@@ -434,12 +484,16 @@ local function log_command_result(res, val, err, command, tmp)
     return 0
 end
 
+---Attempt to extract the subtitle tracks to extract subtitles
+---@return {id: integer}|nil
+---@return { id: integer; codec: string; }|nil
+---@return boolean Whether any of the tracks contain subtitles
 local function get_tracks()
     -- retrieve information about currently selected tracks
     local tracks, err = utils.parse_json(mp.get_property("track-list"))
     if tracks == nil then
         msg.warning("Couldn't parse track-list")
-        return
+        return nil, nil, false
     end
 
     local video = nil
@@ -470,7 +524,7 @@ local function get_file_options(options)
     local save_gif = options.mode == 'gif' or options.mode == 'all' or save_video == false
     local hash_name = uuid()
     local gifname, videoname, videoext = get_file_names(options)
-    local temp_location = IS_WINDOWS and ffmpeg_esc(os.getenv("TEMP")) or "/tmp"
+    local temp_location = IS_WINDOWS and ffmpeg_esc(os.getenv("TEMP") or '') or "/tmp"
     temp_location = temp_location .. '/gifgen/' .. hash_name
     local palette = temp_location .. "/mpv-gif-gen_palette.png"
     local tmpvideo = temp_location .. "/mpv-gif-gen_tmpvideo" .. '.' .. videoext
@@ -846,12 +900,12 @@ end
 
 ---Create a gif and/or video with the requested time
 ---and options.
----@param start_time_l number
----@param end_time_l number
----@param with_subtitles boolean
----@param options Options
----@param pathname string
----@param was_downloaded boolean
+---@param start_time_l number Start time for gif or video
+---@param end_time_l number End time for gif or video
+---@param with_subtitles boolean Whether or not to include subtitles
+---@param options Options Options for the file processing
+---@param pathname string Path to local video
+---@param was_downloaded boolean Flag that indicates if the video segment was downloaded with yt-dlp
 local function process_local_video(start_time_l, end_time_l, with_subtitles, options, pathname, was_downloaded)
     if options.save_gif then
         make_gif_internal(start_time_l, end_time_l, with_subtitles, options, pathname)
