@@ -359,7 +359,7 @@ end
 
 local function get_tracks()
     -- retrieve information about currently selected tracks
-    local tracks, rr = utils.parse_json(mp.get_property("track-list"))
+    local tracks, err = utils.parse_json(mp.get_property("track-list"))
     if tracks == nil then
         msg.warning("Couldn't parse track-list")
         return
@@ -849,21 +849,21 @@ end
 
 -- Functions for keybindings
 
-function set_gif_start()
+local function set_gif_start()
     start_time = mp.get_property_number("time-pos", -1)
     mp.osd_message("GIF Start: " .. start_time)
 end
 
-function set_gif_end()
+local function set_gif_end()
     end_time = mp.get_property_number("time-pos", -1)
     mp.osd_message("GIF End: " .. end_time)
 end
 
-function make_gif_with_subtitles()
+local function make_gif_with_subtitles()
     process_gif_request(true)
 end
 
-function make_gif()
+local function make_gif()
     process_gif_request(false)
 end
 
