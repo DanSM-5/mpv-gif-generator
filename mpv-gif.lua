@@ -2,10 +2,10 @@
 -- Requires ffmpeg.
 -- Adapted from http://blog.pkh.me/p/21-high-quality-gif-with-ffmpeg.html
 -- Usage: "g" to set start frame, "G" to set end frame, "Ctrl+g" to create.
-local mp = require 'mp'
-local msg = require 'mp.msg'
-local utils = require 'mp.utils'
-mp.options = require 'mp.options'
+local mp = require('mp')
+local msg = require('mp.msg')
+local utils = require('mp.utils')
+mp.options = require('mp.options')
 local IS_WINDOWS = package.config:sub(1, 1) ~= "/"
 
 -- Global start and end time
