@@ -14,6 +14,48 @@ local end_time = -1
 
 -- options
 -- require 'mp.options'
+
+---@class BaseOptions
+---@field fps number
+---@field width number
+---@field height number
+---@field extension string
+---@field outputDirectory string
+---@field flags string
+---@field customFilters string
+---@field key string
+---@field keyStartTime string
+---@field keyEndTime string
+---@field keyMakeGif string
+---@field keyMakeGifSub string
+---@field ffmpegCmd string
+---@field ffprogCmd string
+---@field ytdlpCmd string
+---@field ytdlpSubLang string
+---@field copyVideoCodec string
+---@field copyAudioCodec string
+---@field debug boolean
+---@field mode 'gif' | 'video' | 'all'
+
+---@class FileOptions
+---@field save_video boolean
+---@field save_gif boolean
+---@field hash string
+---@field tmp string
+---@field palette string
+---@field segment string
+---@field tmpvideo string
+---@field tmpgif string
+---@field segment_base string
+---@field segment_cmd string
+---@field gifname string
+---@field videoname string
+---@field videoext string
+---@field filters string
+
+---@class Options: FileOptions, BaseOptions
+
+---@type BaseOptions
 local default_options = {
     fps = -1,
     width = 600,
@@ -46,10 +88,12 @@ local log_verbose = default_options.debug and function (...)
     msg.info(...)
 end or function (...) end
 
+local debug_enabled = default_options.debug
+
 -- Debug only - Get printable strings for tables
 local function dump(o)
-    if not default_options.debug then
-        return ""
+    if not debug_enabled then
+        return ''
     end
 
     if type(o) == 'table' then
@@ -64,6 +108,10 @@ local function dump(o)
     end
 end
 
+---Create a temporary lock file to reserve the filename
+---as multiple gifts can be made in parallel
+---@param name string Name of the lock file
+---@return boolean
 local function create_lock_file(name)
     -- "echo '' >> $name" should work to create an empty file on
     -- windows (cmd) and linux.
@@ -72,11 +120,20 @@ local function create_lock_file(name)
     if f ~= nil then io.close(f) return true else return false end
 end
 
+---Delete lock file
+---@param name string Name of the lock file to delete
+---@return boolean If deletion succeded
+---@return string? Error if deletion failed
 local function delete_lock_file(name)
     local ok, err = os.remove(name)
     return ok, err
 end
 
+---Replace a lock file with the final file
+---@param source string Path to the file that will replace the lockfile
+---@param destination string Path to the lockfile to be replaced
+---@return boolean If replacement of lockfile was successful
+---@return string? Error if replacement of lockfile failed
 local function replace_lock_file(source, destination)
     delete_lock_file(destination)
     local ok, err = os.rename(source, destination)
@@ -89,9 +146,14 @@ local function is_local_file()
     return string.find(pathname, "^https?://") == nil
 end
 
+---Replace all forward slash with backslash for windows
+---specific paths that do not handle forward slash appropriately
+---@param s string Path with potential forward slashes
+---@return string Path forward slashes replaced by backslashes
 local function win_dir_esc(s)
     -- To create a dir using mkdir in cmd path requires to use backslash
-    return string.gsub(s, [[/]], [[\]])
+    local replaced = string.gsub(s, [[/]], [[\]])
+    return replaced
 end
 
 -- local function win_dir_esc_str(s)
@@ -181,6 +243,9 @@ local function is_dir(path)
    return exists(path .. "/")
 end
 
+--- Verify that path exists or creates it if not
+--- This rely on native shell commands per platform
+--- @param pathname string
 local function ensure_out_dir(pathname)
     if is_dir(pathname) then
         return
@@ -276,12 +341,20 @@ local function get_file_extension(name)
   return name:match("^.+(%..+)$")
 end
 
+---Define the file names to be used for the gif or video
+---@param options BaseOptions
+---@return string
+---@return string
+---@return string
 local function get_file_names(options)
     local is_local = is_local_file()
     local filename = is_local and mp.get_property("filename/no-ext") or mp.get_property("media-title", mp.get_property("filename/no-ext"))
+    ---@type string
     local videoext = is_local and get_file_extension(mp.get_property("filename")) or 'mp4'
     local file_path = options.outputDirectory .. "/" .. clean_string(filename)
+    ---@type string
     local gifname = nil
+    ---@type string
     local videoname = nil
 
     -- increment filename
@@ -295,15 +368,19 @@ local function get_file_names(options)
         end
     end
 
-    if not gifname then
+    if not gifname or not videoname then
         msg.warning("No available filename")
         mp.osd_message('No available filenames!')
-        return
+        return '', '', ''
     end
 
     return gifname, videoname, videoext
 end
 
+--- Create shallow copy of a table
+---@generic T
+---@param t T
+---@return T
 local function shallow_copy(t)
   local table = {}
   for k, v in pairs(t) do
@@ -385,6 +462,9 @@ local function get_tracks()
     return video, sub, has_sub
 end
 
+--- Create the config for files based on the provided config
+---@param options BaseOptions Options from gifgen.conf file
+---@return FileOptions Names and other file related data
 local function get_file_options(options)
     local save_video = options.mode == 'video' or options.mode == 'all'
     local save_gif = options.mode == 'gif' or options.mode == 'all' or save_video == false
@@ -417,6 +497,7 @@ local function get_file_options(options)
 
     log_verbose("[GIF][TMP] Location:", temp_location)
 
+    ---@type FileOptions
     local file_options = {
         save_video = save_video,
         save_gif = save_gif,
@@ -439,6 +520,8 @@ local function get_file_options(options)
     return file_options
 end
 
+---Generates the filenames and other file related options such as extension
+---@return Options Options for the gif or video processing
 local function get_options()
     local options = shallow_copy(default_options)
     mp.options.read_options(options, "gifgen")
@@ -447,6 +530,7 @@ local function get_options()
     log_verbose = options.debug and function (...)
         msg.info(...)
     end or function (...) end
+    debug_enabled = options.debug
 
     options.outputDirectory = ffmpeg_esc(expand_string(options.outputDirectory))
     options.ytdlpCmd = expand_string(options.ytdlpCmd)
@@ -457,12 +541,22 @@ local function get_options()
 
     local file_options = get_file_options(options)
 
-    -- merge options
-    for k,v in pairs(file_options) do options[k] = v end
+    ---@cast options Options
+    local fullOptions = options
 
-    return options
+    -- merge options
+    for k,v in pairs(file_options) do fullOptions[k] = v end
+
+    return fullOptions
 end
 
+---Copy a file from target to destination
+---using native cli commands.
+---cp in unix/unix-like operative systems
+---Copy-Item cmdlet in windows
+---@param target string File/directory to be copied
+---@param destination string Path where the item should be copied to
+---@param tmp string Path where temporary directories are located
 local function copy_file(target, destination, tmp)
     -- TODO: Allow custom copy command in config
     local args_cp = IS_WINDOWS and {
@@ -549,6 +643,11 @@ end
 --   return new_file_sz == old_file_sz
 -- end
 
+---Cut segment of video with the requested starting and ending time
+---@param start_time_l number Start time for the video segment
+---@param end_time_l number End time for the video segment
+---@param pathname string Path to the video to be processed
+---@param options Options Options with the data for the video process
 local function cut_video(start_time_l, end_time_l, pathname, options)
     local position = start_time_l
     local duration = end_time_l - start_time_l
@@ -606,6 +705,12 @@ local function cut_video(start_time_l, end_time_l, pathname, options)
     end)
 end
 
+---Creates a gif using ffmpeg
+---@param start_time_l number Gif start time
+---@param end_time_l number Gif end time
+---@param burn_subtitles boolean Whether or not try to burn subtitles
+---@param options Options Options for the gif creation
+---@param pathname string Path to the video to process
 local function make_gif_internal(start_time_l, end_time_l, burn_subtitles, options, pathname)
     -- Check time setup is in range
     if start_time_l == -1 or end_time_l == -1 or start_time_l >= end_time_l then
@@ -617,7 +722,10 @@ local function make_gif_internal(start_time_l, end_time_l, burn_subtitles, optio
     -- abort if no gifname available
     local gifname = options.gifname
     local tmpgif = options.tmpgif
-    if gifname == nil then
+
+    -- gifname will be an empty string if there was abort
+    -- failure to create the filename
+    if gifname == '' then
         delete_lock_file(gifname)
         return
     end
@@ -736,6 +844,14 @@ local function make_gif_internal(start_time_l, end_time_l, burn_subtitles, optio
     end)
 end
 
+---Create a gif and/or video with the requested time
+---and options.
+---@param start_time_l number
+---@param end_time_l number
+---@param with_subtitles boolean
+---@param options Options
+---@param pathname string
+---@param was_downloaded boolean
 local function process_local_video(start_time_l, end_time_l, with_subtitles, options, pathname, was_downloaded)
     if options.save_gif then
         make_gif_internal(start_time_l, end_time_l, with_subtitles, options, pathname)
@@ -757,6 +873,12 @@ local function process_local_video(start_time_l, end_time_l, with_subtitles, opt
     end
 end
 
+---Downloads the segment of video to be processed
+---This function is only called when the video is not local
+---@param start_time_l number Start time for gif
+---@param end_time_l number End time for gif
+---@param burn_subtitles boolean Whether or not to attempt to include subtitles
+---@param options Options Options for the gif creation process
 local function download_video_segment(start_time_l, end_time_l, burn_subtitles, options)
     -- Check time setup is in range
     if start_time_l == -1 or end_time_l == -1 or start_time_l >= end_time_l then
@@ -826,6 +948,8 @@ local function download_video_segment(start_time_l, end_time_l, burn_subtitles, 
     end)
 end
 
+---Starts the gif making process
+---@param with_subtitles boolean Whether or not to include subtitles
 local function process_gif_request(with_subtitles)
     local start_time_l = start_time
     local end_time_l = end_time
