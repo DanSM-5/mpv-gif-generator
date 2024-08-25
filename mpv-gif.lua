@@ -9,8 +9,8 @@ mp.options = require 'mp.options'
 local IS_WINDOWS = package.config:sub(1, 1) ~= "/"
 
 -- Global start and end time
-start_time = -1
-end_time = -1
+local start_time = -1
+local end_time = -1
 
 -- options
 -- require 'mp.options'
@@ -329,16 +329,20 @@ local function log_command_result(res, val, err, command, tmp)
         if val ~= nil and val["stderr"] then
             if mp.get_property("options/terminal") == "no" then
                 file = io.open(string.format(tmp .. "/mpv-gif-ffmpeg.%s.log", os.time()), "w")
-                file:write(string.format("ffmpeg error %d:\n%s", val["status"], val["stderr"]))
-                file:close()
+                if file ~= nil then
+                    file:write(string.format("ffmpeg error %d:\n%s", val["status"], val["stderr"]))
+                    file:close()
+                end
             else
                 msg.error(val["stderr"])
             end
         else
             if mp.get_property("options/terminal") == "no" then
                 file = io.open(string.format(tmp .. "/mpv-gif-ffmpeg.%s.log", os.time()), "w")
-                file:write(string.format("ffmpeg error:\n%s", err))
-                file:close()
+                if file ~= nil then
+                    file:write(string.format("ffmpeg error:\n%s", err))
+                    file:close()
+                end
             else
                 msg.error("Error msg: " .. err)
             end
@@ -355,7 +359,7 @@ end
 
 local function get_tracks()
     -- retrieve information about currently selected tracks
-    local tracks, err = utils.parse_json(mp.get_property("track-list"))
+    local tracks, rr = utils.parse_json(mp.get_property("track-list"))
     if tracks == nil then
         msg.warning("Couldn't parse track-list")
         return
@@ -633,8 +637,15 @@ local function make_gif_internal(start_time_l, end_time_l, burn_subtitles, optio
     local subtitle_filter = ""
     -- add subtitles only for final rendering as it slows down significantly
     if burn_subtitles and has_sub and is_local_file() then
+        local sid
         -- TODO: implement usage of different subtitle formats (i.e. bitmap ones, …)
-        sid = (sel_sub == nil and 0 or sel_sub["id"] - 1)  -- mpv starts counting subtitles with one
+        if sel_sub == nil then
+            sid = 0
+        else
+            -- mpv starts counting subtitles with one
+            sid = sel_sub['id'] - 1
+        end
+        -- sid = (sel_sub == nil and 0 or sel_sub["id"] - 1)
         subtitle_filter = string.format(",subtitles='%s':si=%d", escape_colon(pathname), sid)
     elseif burn_subtitles and not is_local_file() and has_subtitles(pathname) then
         subtitle_filter = string.format(",subtitles='%s':si=0", escape_colon(pathname))
@@ -692,8 +703,8 @@ local function make_gif_internal(start_time_l, end_time_l, burn_subtitles, optio
     log_verbose("[GIF][ARGS] ffmpeg gif:", dump(args_gif))
 
     -- first, create the palette
-    mp.command_native_async(palette_cmd, function(res, val, err)
-        if log_command_result(res, val, err, "ffmpeg->palette", options.tmp) ~= 0 then
+    mp.command_native_async(palette_cmd, function(res_palette, val_palette, err_palette)
+        if log_command_result(res_palette, val_palette, err_palette, "ffmpeg->palette", options.tmp) ~= 0 then
             delete_lock_file(gifname)
             return
         end
@@ -701,8 +712,8 @@ local function make_gif_internal(start_time_l, end_time_l, burn_subtitles, optio
         msg.info("Generated palette: " .. palette)
 
         -- then, make the gif
-        mp.command_native_async(gif_cmd, function(res, val, err)
-            if log_command_result(res, val, err, "ffmpeg->gif", options.tmp) ~= 0 then
+        mp.command_native_async(gif_cmd, function(res_gif, val_gif, err_gif)
+            if log_command_result(res_gif, val_gif, err_gif, "ffmpeg->gif", options.tmp) ~= 0 then
                 delete_lock_file(gifname)
                 return
             end
