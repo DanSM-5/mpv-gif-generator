@@ -1,1 +1,1 @@
-require 'mpv-gif'
+require('mpv-gif')
