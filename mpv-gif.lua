@@ -285,6 +285,7 @@ local function ensure_out_dir(pathname)
     msg.info("Out dir not found, creating: " .. pathname)
     if not IS_WINDOWS then
         os.execute('mkdir -p ' .. pathname)
+        return
     end
 
     -- TODO: Experimental if MSYS/MINGW is available, use its mkdir
