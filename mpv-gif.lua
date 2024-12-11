@@ -140,6 +140,10 @@ local function replace_lock_file(source, destination)
     local message = string.format("[GIF][LOCK] Replacing %s with %s", source, destination)
     log_verbose(message)
     delete_lock_file(destination)
+    if not IS_WINDOWS then
+        local ok, err = os.execute(string.format('mv "%s" "%s"', source, destination))
+        return ok or false, 'Unable to move temp file: ' .. err
+    end
     local ok, err = os.rename(source, destination)
     return ok, err
 end
