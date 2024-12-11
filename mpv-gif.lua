@@ -137,6 +137,9 @@ end
 ---@return boolean If replacement of lockfile was successful
 ---@return string? Error if replacement of lockfile failed
 local function replace_lock_file(source, destination)
+    local message = string.format("[GIF][LOCK] Replacing %s with %s", source, destination)  
+    msg.info(message)
+    mp.osd_message(message)
     delete_lock_file(destination)
     local ok, err = os.rename(source, destination)
     return ok, err
