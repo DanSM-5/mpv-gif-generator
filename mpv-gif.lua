@@ -401,6 +401,8 @@ local function get_file_names(options)
     ---@type string
     local videoname = nil
 
+    videoext = videoext:gsub([[^.]], '')
+
     -- increment filename
     for i = 0,999 do
         local gif_name = string.format('%s_%03dg.%s', file_path, i, options.extension)
