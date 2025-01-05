@@ -660,7 +660,6 @@ local function copy_file(target, destination, tmp)
         -- win_dir_esc_str(target), -- subprocess doesn't like
         -- win_dir_esc_str(destination), -- subprocess doesn't like
     } or {
-        "command",
         "cp",
         "-f",
         target,
@@ -679,7 +678,7 @@ local function copy_file(target, destination, tmp)
     mp.command_native_async(cp_cmd, function (res, val, err)
         if log_command_result(res, val, err, 'cp', tmp) ~= 0 then
             delete_lock_file(destination)
-            local file = io.open(string.format(tmp .. "/mpv-gif-ffmpeg.%s.log", os.time()), "w")
+            local file = io.open(string.format(tmp .. "/mpv-gif-ffmpeg_cp.%s.log", os.time()), "w")
             if file ~= nil then
                 file:write(string.format("[CP] Command: %s\n[CP] Args: %s", dump(cp_cmd), dump(args_cp)))
                 file:close()
