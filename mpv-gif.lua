@@ -469,7 +469,7 @@ local function log_command_result(res, val, err, command, tmp)
             if mp.get_property("options/terminal") == "no" or options.debug then
                 file = io.open(string.format(tmp .. "/mpv-gif-ffmpeg.%s.log", os.time()), "w")
                 if file ~= nil then
-                    file:write(string.format("Gif generation error %d:\n%s", val["status"], val["stderr"]))
+                    file:write(string.format("Gif generation error %d:\n%s\n[VAL]: %s\n[ERR]: %s", val["status"], val["stderr"], dump(val), dump(err)))
                     file:close()
                 end
             else
@@ -479,7 +479,7 @@ local function log_command_result(res, val, err, command, tmp)
             if mp.get_property("options/terminal") == "no" or options.debug then
                 file = io.open(string.format(tmp .. "/mpv-gif-ffmpeg.%s.log", os.time()), "w")
                 if file ~= nil then
-                    file:write(string.format("Gif generation error:\n%s", err))
+                    file:write(string.format("Gif generation error:\n%s\n[VAL]: %s\n[ERR]: %s", err, dump(val), dump(err)))
                     file:close()
                 end
             else
@@ -676,6 +676,11 @@ local function copy_file(target, destination, tmp)
     mp.command_native_async(cp_cmd, function (res, val, err)
         if log_command_result(res, val, err, 'cp', tmp) ~= 0 then
             delete_lock_file(destination)
+            local file = io.open(string.format(tmp .. "/mpv-gif-ffmpeg.%s.log", os.time()), "w")
+            if file ~= nil then
+                file:write(string.format("[CP] Command: %s\n[CP] Args: %s", dump(cp_cmd), dump(args_cp)))
+                file:close()
+            end
             return
         end
 
