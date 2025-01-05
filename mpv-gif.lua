@@ -407,7 +407,10 @@ local function get_file_names(options)
     ---@type string
     local videoname = nil
 
-    videoext = videoext:gsub([[^.]], '')
+    -- remove starting dot
+    if videoext:sub(1,1) == '.' then
+      videoext = videoext:sub(2)
+    end
 
     -- increment filename
     for i = 0,999 do
