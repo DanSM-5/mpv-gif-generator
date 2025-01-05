@@ -462,21 +462,24 @@ local function log_command_result(res, val, err, command, tmp)
 
     if not (res and (val == nil or val["status"] == 0)) then
         local file = nil
+        local options = shallow_copy(default_options)
+        mp.options.read_options(options, "gifgen")
+
         if val ~= nil and val["stderr"] then
-            if mp.get_property("options/terminal") == "no" then
+            if mp.get_property("options/terminal") == "no" or options.debug then
                 file = io.open(string.format(tmp .. "/mpv-gif-ffmpeg.%s.log", os.time()), "w")
                 if file ~= nil then
-                    file:write(string.format("ffmpeg error %d:\n%s", val["status"], val["stderr"]))
+                    file:write(string.format("Gif generation error %d:\n%s", val["status"], val["stderr"]))
                     file:close()
                 end
             else
                 msg.error(val["stderr"])
             end
         else
-            if mp.get_property("options/terminal") == "no" then
+            if mp.get_property("options/terminal") == "no" or options.debug then
                 file = io.open(string.format(tmp .. "/mpv-gif-ffmpeg.%s.log", os.time()), "w")
                 if file ~= nil then
-                    file:write(string.format("ffmpeg error:\n%s", err))
+                    file:write(string.format("Gif generation error:\n%s", err))
                     file:close()
                 end
             else
@@ -1076,3 +1079,4 @@ mp.add_key_binding(start_time_key, "set_gif_start", set_gif_start)
 mp.add_key_binding(end_time_key, "set_gif_end", set_gif_end)
 mp.add_key_binding(make_gif_key, "make_gif", make_gif)
 mp.add_key_binding(make_gif_sub_key, "make_gif_with_subtitles", make_gif_with_subtitles)
+
