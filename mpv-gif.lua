@@ -1081,8 +1081,6 @@ log_verbose("[GIF] Keybindings:", dump({
     make_gif_sub_key,
 }))
 
-mp.add_key_binding('Ctrl+t', 'get_path', get_path)
-
 mp.add_key_binding(start_time_key, "set_gif_start", set_gif_start)
 mp.add_key_binding(end_time_key, "set_gif_end", set_gif_end)
 mp.add_key_binding(make_gif_key, "make_gif", make_gif)
