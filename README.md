@@ -77,14 +77,14 @@ The output file name is in the format `<VIDEO NAME>_000<MODE INITIAL>.<EXT>`. Fu
 ## Configurations
 The script can be configured either by having a `script-opts/gifgen.conf` or using e.g. `--script-opts=gifgen-width=-1`. An example configuration file could be:
 
-```conf
+```ini
 # Default configs
 
 # fps for output (can be -1 for source fps).
 fps=-1
 
 # Width of the resulting gif.
-width=600
+width=680
 
 # Leave -1 to automatically determine height or set to customize.
 height=-1

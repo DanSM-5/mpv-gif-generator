@@ -12,9 +12,6 @@ local IS_WINDOWS = package.config:sub(1, 1) ~= "/"
 local start_time = -1
 local end_time = -1
 
--- options
--- require 'mp.options'
-
 ---@class BaseOptions
 ---@field fps number
 ---@field width number
@@ -58,7 +55,7 @@ local end_time = -1
 ---@type BaseOptions
 local default_options = {
     fps = -1,
-    width = 600,
+    width = 680,
     height = -1,
     extension = "gif", -- file extension by default
     outputDirectory = "~/mpv-gifs", -- save to home directory by default
@@ -599,6 +596,9 @@ local function get_options()
     log_verbose = options.debug and function (...)
         msg.info(...)
     end or function (...) end
+
+    -- You can only see this message if debug mode is enabled
+    log_verbose('[GIF] Debug mode enabled!')
     debug_enabled = options.debug
 
     options.outputDirectory = ffmpeg_esc(expand_string(options.outputDirectory))
@@ -1013,6 +1013,9 @@ local function download_video_segment(start_time_l, end_time_l, burn_subtitles, 
 
         local segment = options.segment
         local message = string.format("Video segment downloaded: %s", segment)
+        -- It is possible that the download completes but the output is either a bad video
+        -- or empty due to the some encoding issue with youtube source.
+        log_verbose('[GIF][YTDLP] Completed with success status code. For errors review the output video.')
         local duration = end_time_l - start_time_l
         msg.info(message)
         mp.osd_message(message)
