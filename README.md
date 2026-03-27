@@ -3,13 +3,15 @@
 Small script that uses ffmpeg in order to generate GIFs from a chosen part of the playing video.
 
 This script is an extension of the original and forks:
+
 - Original: https://gist.github.com/Ruin0x11/8fae0a9341b41015935f76f913b28d2a
-- Forked version from: https://github.com/tyalie/mpv-gif-generator
+- Forked from: https://github.com/tyalie/mpv-gif-generator
 - Windows support: https://github.com/the-honey/mpv-gif-generator
 
 What's different from the other versions?
+
 - It is cross platform (it should work in windows and linux at least).
-- Keybinding is configurable. Default is "g" but you can change it to any A-Z key or set all keybinfings
+- Keybindings are configurable. Default is "g" but you can change it to any A-Z key or set all keybindings
   manually.
 - Supports local videos as well as all videos supported by `yt-dlp`.
 - Highly configurable. No that you need to change much from the defaults but you can.
@@ -30,8 +32,7 @@ Copy the lua script into
 - `/etc/mpv/scripts` for linux (all users)
 - `~/AppData/Roaming/mpv/scripts` for windows (single user)
 
-Script supports cloning the repo into the scripts directory. On windows it may need to have
-symlinks enabled.
+Script supports cloning the repo into the scripts directory.
 
 ### Debugging
 
@@ -60,6 +61,7 @@ You can of course map any of the 4 keybinfings separately using `keyStartTime`, 
 For videos played with `yt-dlp` it is required to download the segment of the video first which may take a bit of time. Be patient while the video downloads. You'll see a notification when gif processing starts.
 
 ### Changing mode
+
 There are three modes available for configuring the behavior of the extension.
 
 | mode              | behavior                         |
@@ -71,10 +73,12 @@ There are three modes available for configuring the behavior of the extension.
 For any non-valid mode the behavior will be to default to `gif`.
 
 ## Output
+
 By default the output directory is `~/mpv-gifs`. This setting can be changed in the config with the key `outputDirectory`.
 The output file name is in the format `<VIDEO NAME>_000<MODE INITIAL>.<EXT>`. Full path `~/mpv-gifs/<VIDEO NAME>_000<MODE INITIAL>.<EXT>`.
 
 ## Configurations
+
 The script can be configured either by having a `script-opts/gifgen.conf` or using e.g. `--script-opts=gifgen-width=-1`. An example configuration file could be:
 
 ```ini
@@ -151,3 +155,6 @@ flags="lanczos"
 # You will replace the string: "scale='trunc(ih*dar/2)*2:trunc(ih/2)*2',setsar=1/1,scale=%d:%d:flags=%s"
 customFilters=
 ```
+
+**NOTE:** Configuration is read when gif processing starts. This mean you can update your config without restarting mpv.
+The only limitation are keybinding which are set on script load.
